@@ -100,7 +100,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     });
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/boiler-log', {
+      const res = await fetch('https://shalimar-ops.onrender.com/boiler-log', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

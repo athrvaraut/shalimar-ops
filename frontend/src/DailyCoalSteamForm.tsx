@@ -69,7 +69,7 @@ export default function DailyCoalSteamForm({ token, onBack }: Props) {
     });
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/daily-report', {
+      const res = await fetch('https://shalimar-ops.onrender.com/daily-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

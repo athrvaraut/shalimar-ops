@@ -36,8 +36,8 @@ export default function HODDashboard({ token, onBack }: {
   
   try {
     const endpoint = tab === 'pending'
-      ? 'http://127.0.0.1:8000/boiler-log/pending'
-      : 'http://127.0.0.1:8000/boiler-log/today';
+      ? 'https://shalimar-ops.onrender.com/boiler-log/pending'
+      : 'https://shalimar-ops.onrender.com/boiler-log/today';
 
     const res = await fetch(endpoint, {
       headers: { 'Authorization': `Bearer ${authToken}` }
@@ -60,7 +60,7 @@ export default function HODDashboard({ token, onBack }: {
   setActionLoading(id);
   const authToken = token || localStorage.getItem('token') || '';
   try {
-    const res = await fetch(`http://127.0.0.1:8000/boiler-log/${id}/${action}`, {
+    const res = await fetch(`https://shalimar-ops.onrender.com/boiler-log/${id}/${action}`, {
       method: 'PUT',
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
@@ -75,7 +75,7 @@ export default function HODDashboard({ token, onBack }: {
 };
   const downloadExcel = async (date: string) => {
   const res = await fetch(
-    `http://127.0.0.1:8000/export/daily-boiler/${date}`,
+    `https://shalimar-ops.onrender.com/export/daily-boiler/${date}`,
     { headers: { 'Authorization': `Bearer ${token}` } }
   );
   const blob = await res.blob();
