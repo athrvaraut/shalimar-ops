@@ -51,7 +51,10 @@ export default function HODDashboard({ token, onBack }: {
   }
 };
 
-  useEffect(() => { fetchEntries(); }, [tab]);
+   useEffect(() => { 
+   fetchEntries(); 
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [tab]);
 
   const handleAction = async (id: number, action: 'approve' | 'reject') => {
   setActionLoading(id);

@@ -276,6 +276,14 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               rows={2} />
           </div>
         </div>
+        {warnings.length > 0 && (
+  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa',
+    borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+    {warnings.map((w, i) => (
+      <div key={i} style={{ color: '#c2410c', fontSize: 13 }}>{w}</div>
+    ))}
+  </div>
+)}
 
         {/* Errors / Success */}
         {error && <div style={s.errorBox}>❌ {error}</div>}
