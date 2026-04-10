@@ -20,7 +20,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://localhost:3001"  # Add this line!
+        "http://localhost:3001",
+        "https://shalimar-ops-slxa.vercel.app",  # ← ADD THIS
+        "https://*.vercel.app",                   # ← ADD THIS
     ],
     allow_credentials=True,
     allow_methods=["*"],
