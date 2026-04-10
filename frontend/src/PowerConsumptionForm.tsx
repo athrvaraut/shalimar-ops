@@ -62,7 +62,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
     });
 
     try {
-      const res = await fetch('https://shalimar-ops.onrender.com/power-consumption', {
+      const res = await fetch('http://127.0.0.1:8000/power-consumption', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,7 +219,7 @@ function SummaryBox({ label, value, color }: { label: string; value: string; col
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#f0f2f5', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  page: { minHeight: '100vh', background: '#f0f2f5', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflowX: 'hidden' },
   header: { background: '#0f3460', color: '#fff', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 10 },
   headerTitle: { fontSize: 16, fontWeight: 700 },
   headerSub: { fontSize: 11, opacity: 0.75, marginTop: 2 },
@@ -227,9 +227,9 @@ const s: Record<string, React.CSSProperties> = {
   form: { maxWidth: 720, margin: '0 auto', padding: '20px 16px 40px' },
   section: { background: '#fff', borderRadius: 12, padding: '16px 18px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
   sectionTitle: { fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 14, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' },
-  grid4: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 },
-  ratioGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 },
-  row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+  grid4: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 },
+  ratioGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 },
+  row2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 },
   field: { display: 'flex', flexDirection: 'column', gap: 4 },
   label: { fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' },
   input: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' },
