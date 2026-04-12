@@ -29,7 +29,7 @@ export default function HODDashboard({ token, onBack }: {
   const [powerReports, setPowerReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'boiler' | 'coal' | 'power'>('boiler');
-  const [message, setMessage] = useState('');
+  const [message] = useState(''); 
 
   const authHeader = { 'Authorization': `Bearer ${token || localStorage.getItem('token')}` };
 
