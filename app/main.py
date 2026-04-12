@@ -472,14 +472,32 @@ def export_daily_boiler_excel(
         headers={"Content-Disposition": f"attachment; filename=Daily_Boiler_Report_{date}.xlsx"}
     )
 @app.get("/daily-report/recent")
-def get_recent_coal_reports(db, current_user):
-    from sqlalchemy import desc
-    return db.query(models.DailyCoalSteam).order_by(desc(models.DailyCoalSteam.id)).limit(31).all()
+def get_recent_coal_reports(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    try:
+        from sqlalchemy import desc, text
+        results = db.execute(
+            text("SELECT * FROM daily_coal_steam ORDER BY id DESC LIMIT 31")
+        ).mappings().all()
+        return [dict(r) for r in results]
+    except Exception as e:
+        return []
 
 @app.get("/power-consumption/recent")
-def get_recent_power_reports(db, current_user):
-    from sqlalchemy import desc
-    return db.query(models.PowerConsumption).order_by(desc(models.PowerConsumption.id)).limit(31).all()
+def get_recent_power_reports(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    try:
+        from sqlalchemy import text
+        results = db.execute(
+            text("SELECT * FROM power_consumption ORDER BY id DESC LIMIT 31")
+        ).mappings().all()
+        return [dict(r) for r in results]
+    except Exception as e:
+        return []
 
 @app.get("/export/power/{date}")
 def export_power_excel(

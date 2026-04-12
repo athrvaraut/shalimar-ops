@@ -7,6 +7,7 @@ interface LogEntry {
   shift: string;
   log_date: string;
   log_time: string;
+  operator_name: string | null;
   steam_pressure: number | null;
   steam_flow_sep: number | null;
   steam_flow_refl: number | null;
@@ -18,144 +19,78 @@ interface LogEntry {
   breakdown_problem: string | null;
   remarks: string | null;
   status: string;
-  created_at: string;
 }
 
 export default function HODDashboard({ token, onBack }: {
-  token: string;
-  onBack: () => void;
+  token: string; onBack: () => void;
 }) {
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [boilerEntries, setBoilerEntries] = useState<LogEntry[]>([]);
   const [coalReports, setCoalReports] = useState<any[]>([]);
   const [powerReports, setPowerReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'pending' | 'today' | 'coal' | 'power'>('pending');
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [tab, setTab] = useState<'boiler' | 'coal' | 'power'>('boiler');
   const [message, setMessage] = useState('');
 
-  const authToken = token || localStorage.getItem('token') || '';
+  const authHeader = { 'Authorization': `Bearer ${token || localStorage.getItem('token')}` };
 
-  const fetchEntries = async () => {
+  const fetchBoiler = async () => {
     setLoading(true);
     try {
-      const endpoint = tab === 'pending'
-        ? `${API}/boiler-log/pending`
-        : `${API}/boiler-log/today`;
-      const res = await fetch(endpoint, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
+      const res = await fetch(`${API}/boiler-log/today`, { headers: authHeader });
       const data = await res.json();
-      setEntries(Array.isArray(data) ? data : []);
-    } catch {
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
+      setBoilerEntries(Array.isArray(data) ? data : []);
+    } catch { setBoilerEntries([]); }
+    finally { setLoading(false); }
   };
 
-  const fetchCoalReports = async () => {
+  const fetchCoal = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/daily-report/recent`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
+      const res = await fetch(`${API}/daily-report/recent`, { headers: authHeader });
       const data = await res.json();
       setCoalReports(Array.isArray(data) ? data : []);
-    } catch {
-      setCoalReports([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { setCoalReports([]); }
+    finally { setLoading(false); }
   };
 
-  const fetchPowerReports = async () => {
+  const fetchPower = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/power-consumption/recent`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
+      const res = await fetch(`${API}/power-consumption/recent`, { headers: authHeader });
       const data = await res.json();
       setPowerReports(Array.isArray(data) ? data : []);
-    } catch {
-      setPowerReports([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { setPowerReports([]); }
+    finally { setLoading(false); }
   };
 
-  // Single useEffect — runs correct fetch based on tab
   useEffect(() => {
-    if (tab === 'pending' || tab === 'today') fetchEntries();
-    else if (tab === 'coal') fetchCoalReports();
-    else if (tab === 'power') fetchPowerReports();
+    if (tab === 'boiler') fetchBoiler();
+    else if (tab === 'coal') fetchCoal();
+    else fetchPower();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  const handleAction = async (id: number, action: 'approve' | 'reject') => {
-    setActionLoading(id);
+  const download = async (url: string, filename: string) => {
     try {
-      const res = await fetch(`${API}/boiler-log/${id}/${action}`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        setMessage(`Entry #${id} ${action}d successfully`);
-        setTimeout(() => setMessage(''), 3000);
-        fetchEntries();
-      }
-    } finally {
-      setActionLoading(null);
-    }
+      const res = await fetch(url, { headers: authHeader });
+      if (!res.ok) { alert('No data found for this date'); return; }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = window.URL.createObjectURL(blob);
+      a.download = filename; a.click();
+      window.URL.revokeObjectURL(a.href);
+    } catch { alert('Download failed — check connection'); }
   };
 
-  const downloadExcel = async (date: string) => {
-    const res = await fetch(`${API}/export/daily-boiler/${date}`,
-      { headers: { 'Authorization': `Bearer ${authToken}` } });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Boiler_Report_${date}.xlsx`; a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const downloadCoalExcel = async (date: string) => {
-    const res = await fetch(`${API}/export/daily-boiler/${date}`,
-      { headers: { 'Authorization': `Bearer ${authToken}` } });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Coal_Steam_${date}.xlsx`; a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const downloadPowerExcel = async (date: string) => {
-    const res = await fetch(`${API}/export/power/${date}`,
-      { headers: { 'Authorization': `Bearer ${authToken}` } });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Power_${date}.xlsx`; a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const downloadMonthlyCoal = async () => {
+  const downloadMonthlyCoal = () => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const res = await fetch(`${API}/export/monthly-coal/${year}/${month}`,
-      { headers: { 'Authorization': `Bearer ${authToken}` } });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `Monthly_Coal_${year}_${month}.xlsx`; a.click();
-    window.URL.revokeObjectURL(url);
+    download(
+      `${API}/export/monthly-coal/${now.getFullYear()}/${now.getMonth() + 1}`,
+      `Monthly_Coal_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`
+    );
   };
 
-  const statusColor = (st: string) => ({
-    pending: '#f59e0b',
-    approved: '#10b981',
-    rejected: '#ef4444'
-  }[st] || '#888');
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <div style={s.page}>
@@ -165,180 +100,186 @@ export default function HODDashboard({ token, onBack }: {
         <button onClick={onBack} style={s.backBtn}>← Back</button>
         <div>
           <div style={s.headerTitle}>HOD Dashboard</div>
-          <div style={s.headerSub}>Review & approve entries</div>
+          <div style={s.headerSub}>Sonkhamb Plant · Shalimar Nutrients</div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' as const }}>
           <button onClick={() => {
-            if (tab === 'pending' || tab === 'today') fetchEntries();
-            else if (tab === 'coal') fetchCoalReports();
-            else fetchPowerReports();
-          }} style={s.refreshBtn}>🔄 Refresh</button>
-          <button onClick={() => downloadExcel(new Date().toISOString().split('T')[0])}
-            style={s.dlBtn}>📥 Today's Excel</button>
-          <button onClick={downloadMonthlyCoal}
-            style={{ ...s.dlBtn, background: '#7c3aed' }}>📊 Monthly Report</button>
+            if (tab === 'boiler') fetchBoiler();
+            else if (tab === 'coal') fetchCoal();
+            else fetchPower();
+          }} style={s.refreshBtn}>🔄</button>
+
+          {tab === 'boiler' && (
+            <button onClick={() => download(`${API}/export/daily-boiler/${today}`, `Boiler_${today}.xlsx`)}
+              style={s.dlBtn}>📥 Boiler Excel</button>
+          )}
+          {tab === 'coal' && (<>
+            <button onClick={() => {
+              const d = coalReports[0]?.report_date;
+              if (d) download(`${API}/export/daily-boiler/${d}`, `Coal_${d}.xlsx`);
+            }} style={s.dlBtn}>📥 Latest Excel</button>
+            <button onClick={downloadMonthlyCoal} style={{ ...s.dlBtn, background: '#7c3aed' }}>
+              📊 Monthly Report
+            </button>
+          </>)}
+          {tab === 'power' && (<>
+            <button onClick={() => {
+              const d = powerReports[0]?.reading_date;
+              if (d) download(`${API}/export/power/${d}`, `Power_${d}.xlsx`);
+            }} style={s.dlBtn}>📥 Latest Excel</button>
+          </>)}
         </div>
       </div>
 
       {/* ── TABS ── */}
       <div style={s.tabs}>
-        <button style={tab === 'pending' ? s.tabActive : s.tab} onClick={() => setTab('pending')}>⏳ Pending</button>
-        <button style={tab === 'today' ? s.tabActive : s.tab} onClick={() => setTab('today')}>📅 Today's Logs</button>
-        <button style={tab === 'coal' ? s.tabActive : s.tab} onClick={() => setTab('coal')}>🪨 Coal & Steam</button>
-        <button style={tab === 'power' ? s.tabActive : s.tab} onClick={() => setTab('power')}>⚡ Power</button>
+        <button style={tab === 'boiler' ? s.tabActive : s.tab} onClick={() => setTab('boiler')}>
+          🔥 Boiler Log
+        </button>
+        <button style={tab === 'coal' ? s.tabActive : s.tab} onClick={() => setTab('coal')}>
+          🪨 Coal & Steam
+        </button>
+        <button style={tab === 'power' ? s.tabActive : s.tab} onClick={() => setTab('power')}>
+          ⚡ Power
+        </button>
       </div>
 
       {message && <div style={s.msgBox}>{message}</div>}
 
-      {/* ── BOILER LOGS (pending + today) ── */}
-      {(tab === 'pending' || tab === 'today') && (
+      {/* ── BOILER LOG ── */}
+      {tab === 'boiler' && (
         <div style={s.content}>
-          {loading ? (
-            <div style={s.empty}>Loading...</div>
-          ) : entries.length === 0 ? (
+          <div style={s.sectionInfo}>
+            📋 Today's boiler log entries — submitted automatically by operators every 2 hours
+          </div>
+          {loading ? <div style={s.empty}>Loading...</div>
+          : boilerEntries.length === 0 ? (
             <div style={s.empty}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>
-                {tab === 'pending' ? '✅' : '📋'}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>
-                {tab === 'pending' ? 'No pending entries' : 'No entries today'}
-              </div>
-              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>
-                {tab === 'pending' ? 'All entries have been reviewed' : 'Operators have not submitted yet'}
-              </div>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No entries today</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Operators have not submitted yet</div>
             </div>
-          ) : (
-            entries.map(entry => (
-              <div key={entry.id} style={s.card}>
-                <div style={s.cardHeader}>
-                  <div style={s.cardLeft}>
-                    <span style={s.entryId}>Entry #{entry.id}</span>
-                    <span style={{
-                      ...s.statusBadge,
-                      background: statusColor(entry.status) + '20',
-                      color: statusColor(entry.status),
-                      border: `1px solid ${statusColor(entry.status)}40`
-                    }}>{entry.status.toUpperCase()}</span>
-                  </div>
-                  <div style={s.cardRight}>
-                    <span style={s.shiftBadge}>Shift {entry.shift}</span>
-                    <span style={s.dateText}>{entry.log_date} · {String(entry.log_time).slice(0, 5)}</span>
-                  </div>
+          ) : boilerEntries.map(entry => (
+            <div key={entry.id} style={s.card}>
+              <div style={s.cardHeader}>
+                <div style={s.cardLeft}>
+                  <span style={s.entryId}>#{entry.id}</span>
+                  <span style={s.shiftBadge}>Shift {entry.shift}</span>
+                  <span style={s.dateText}>{String(entry.log_time).slice(0,5)}</span>
+                  {entry.operator_name && (
+                    <span style={{ fontSize: 12, color: '#555' }}>👤 {entry.operator_name}</span>
+                  )}
                 </div>
-
-                <div style={s.paramGrid}>
-                  <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM"
-                    warn={entry.steam_pressure !== null && (entry.steam_pressure < 8 || entry.steam_pressure > 12.5)} />
-                  <Param label="Steam Flow SEP" value={entry.steam_flow_sep} unit="KG" />
-                  <Param label="Steam Flow REFL" value={entry.steam_flow_refl} unit="KG" />
-                  <Param label="Drum Water Level" value={entry.drum_water_level} unit="%" />
-                  <Param label="Bed 1 Top Temp" value={entry.bed1_top_temp} unit="°C" />
-                  <Param label="Bed 2 Top Temp" value={entry.bed2_top_temp} unit="°C" />
-                  <Param label="Flue Gas Temp" value={entry.flue_gas_temp} unit="°C"
-                    warn={entry.flue_gas_temp !== null && entry.flue_gas_temp > 220} />
-                  <Param label="Feed Water Temp" value={entry.feed_water_temp} unit="°C" />
-                </div>
-
-                {entry.breakdown_problem && (
-                  <div style={s.breakdownAlert}>
-                    🚨 <strong>Breakdown:</strong> {entry.breakdown_problem}
-                  </div>
-                )}
-
-                {entry.remarks && (
-                  <div style={s.remarksBox}>💬 {entry.remarks}</div>
-                )}
-
-                {entry.status === 'pending' && (
-                  <div style={s.actions}>
-                    <button style={actionLoading === entry.id ? s.btnDisabled : s.btnApprove}
-                      disabled={actionLoading === entry.id}
-                      onClick={() => handleAction(entry.id, 'approve')}>
-                      {actionLoading === entry.id ? '...' : '✓ Approve'}
-                    </button>
-                    <button style={actionLoading === entry.id ? s.btnDisabled : s.btnReject}
-                      disabled={actionLoading === entry.id}
-                      onClick={() => handleAction(entry.id, 'reject')}>
-                      {actionLoading === entry.id ? '...' : '✗ Reject'}
-                    </button>
-                  </div>
-                )}
+                <button onClick={() => download(`${API}/export/daily-boiler/${entry.log_date}`, `Boiler_${entry.log_date}.xlsx`)}
+                  style={s.miniBtn}>📥 Excel</button>
               </div>
-            ))
-          )}
+
+              <div style={s.paramGrid}>
+                <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM"
+                  warn={entry.steam_pressure !== null && (entry.steam_pressure < 8 || entry.steam_pressure > 12.5)} />
+                <Param label="Flow SEP" value={entry.steam_flow_sep} unit="KG" />
+                <Param label="Flow REFL" value={entry.steam_flow_refl} unit="KG" />
+                <Param label="Drum Level" value={entry.drum_water_level} unit="%" />
+                <Param label="Bed 1 Top" value={entry.bed1_top_temp} unit="°C" />
+                <Param label="Bed 2 Top" value={entry.bed2_top_temp} unit="°C" />
+                <Param label="Flue Gas" value={entry.flue_gas_temp} unit="°C"
+                  warn={entry.flue_gas_temp !== null && entry.flue_gas_temp > 220} />
+                <Param label="Feed Water" value={entry.feed_water_temp} unit="°C" />
+              </div>
+
+              {entry.breakdown_problem && (
+                <div style={s.alertBox}>🚨 <strong>Breakdown:</strong> {entry.breakdown_problem}</div>
+              )}
+              {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ── COAL & STEAM TAB ── */}
+      {/* ── COAL & STEAM ── */}
       {tab === 'coal' && (
         <div style={s.content}>
-          {loading ? (
-            <div style={s.empty}>Loading...</div>
-          ) : coalReports.length === 0 ? (
+          <div style={s.sectionInfo}>
+            🪨 Daily coal consumption & steam production records · Click 📥 Excel on any row to download that day's report
+          </div>
+          {loading ? <div style={s.empty}>Loading...</div>
+          : coalReports.length === 0 ? (
             <div style={s.empty}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🪨</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>No coal reports yet</div>
-              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Submit a Daily Coal & Steam report first</div>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🪨</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No coal reports yet</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Go to Daily Coal & Steam form and submit a report</div>
             </div>
-          ) : (
-            coalReports.map((r: any) => (
-              <div key={r.id} style={s.card}>
-                <div style={s.cardHeader}>
-                  <div style={s.cardLeft}>
-                    <span style={s.entryId}>📅 {r.report_date}</span>
-                    <span style={{
-                      ...s.statusBadge,
-                      background: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#d1fae5' : '#fff0f0',
-                      color: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#059669' : '#dc2626',
-                      border: '1px solid #ccc'
-                    }}>C/S: {r.cs_ratio || '—'}</span>
-                  </div>
-                  <button onClick={() => downloadCoalExcel(r.report_date)}
-                    style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                    📥 Excel
-                  </button>
+          ) : coalReports.map((r: any) => (
+            <div key={r.id} style={s.card}>
+              <div style={s.cardHeader}>
+                <div style={s.cardLeft}>
+                  <span style={s.entryId}>📅 {r.report_date}</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+                    background: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#d1fae5' : '#fff0f0',
+                    color: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#059669' : '#dc2626',
+                    border: '1px solid #ccc'
+                  }}>
+                    C/S Ratio: {r.cs_ratio ? Number(r.cs_ratio).toFixed(3) : '—'}
+                    {r.cs_ratio && (r.cs_ratio < 5.0 || r.cs_ratio > 5.6) ? ' ⚠️' : ' ✅'}
+                  </span>
                 </div>
-                <div style={s.paramGrid}>
-                  <Param label="Opening Stock" value={r.opening_coal_stock} unit="MT" />
-                  <Param label="Coal Consumed" value={r.total_coal_consumed} unit="MT" />
-                  <Param label="Closing Stock" value={r.closing_stock} unit="MT" />
-                  <Param label="Total Steam" value={r.total_steam} unit="KG" />
-                  <Param label="SEP Steam" value={r.steam_sep_consumed} unit="KG" />
-                  <Param label="REFL Steam" value={r.steam_refl_consumed} unit="KG" />
-                  <Param label="Feed Water" value={r.feed_water_temp} unit="°C" />
-                  <Param label="Coal Bunker" value={r.coal_bunker_pct} unit="%" />
-                </div>
+                <button onClick={() => download(`${API}/export/daily-boiler/${r.report_date}`, `Coal_Steam_${r.report_date}.xlsx`)}
+                  style={s.miniBtn}>📥 Excel</button>
               </div>
-            ))
-          )}
+              <div style={s.paramGrid}>
+                <Param label="Opening Stock" value={r.opening_coal_stock} unit="MT" />
+                <Param label="Coal Consumed" value={r.total_coal_consumed} unit="MT" />
+                <Param label="Closing Stock" value={r.closing_stock} unit="MT" />
+                <Param label="Arrival" value={r.coal_arrival_indian} unit="MT" />
+                <Param label="SEP Steam" value={r.steam_sep_consumed ? Math.round(r.steam_sep_consumed) : null} unit="KG" />
+                <Param label="REFL Steam" value={r.steam_refl_consumed ? Math.round(r.steam_refl_consumed) : null} unit="KG" />
+                <Param label="Total Steam" value={r.total_steam ? Math.round(r.total_steam) : null} unit="KG" />
+                <Param label="Feed Water" value={r.feed_water_temp} unit="°C" />
+              </div>
+              {r.steam_pressure_ok === false && (
+                <div style={s.alertBox}>⚠️ Steam pressure problem reported this day</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ── POWER TAB ── */}
+      {/* ── POWER ── */}
       {tab === 'power' && (
         <div style={s.content}>
-          {loading ? (
-            <div style={s.empty}>Loading...</div>
-          ) : powerReports.length === 0 ? (
+          <div style={s.sectionInfo}>
+            ⚡ Daily power consumption per section · Click 📥 Excel on any row to download that day's report
+          </div>
+          {loading ? <div style={s.empty}>Loading...</div>
+          : powerReports.length === 0 ? (
             <div style={s.empty}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>No power reports yet</div>
-              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Submit a Power Consumption report first</div>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>⚡</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No power reports yet</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Go to Power Consumption form and submit a report</div>
             </div>
-          ) : (
-            powerReports.map((r: any) => (
+          ) : powerReports.map((r: any) => {
+            const total = (r.sep_units||0)+(r.prep_units||0)+(r.solar_units||0)+(r.silo_units||0)+
+              (r.doc_units||0)+(r.dsilo_units||0)+(r.acm_units||0)+(r.boiler_units||0)+
+              (r.chp_units||0)+(r.dm_units||0)+(r.ug_tank_units||0)+(r.refinery_units||0)+
+              (r.etp_units||0)+(r.packing_units||0)+(r.admin_units||0)+(r.dg_units||0);
+            const solarPct = total > 0 ? ((r.solar_units||0)/total*100).toFixed(1) : '0';
+            return (
               <div key={r.id} style={s.card}>
                 <div style={s.cardHeader}>
                   <div style={s.cardLeft}>
-                    <span style={s.entryId}>⚡ {r.reading_date}</span>
-                    <span style={{ ...s.statusBadge, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
-                      PF: {r.power_factor || '—'}
+                    <span style={s.entryId}>📅 {r.reading_date}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                      Total: {total.toFixed(0)} KWH
                     </span>
+                    {r.solar_units > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', color: '#059669', border: '1px solid #86efac' }}>
+                        ☀️ Solar: {r.solar_units} KWH ({solarPct}%)
+                      </span>
+                    )}
                   </div>
-                  <button onClick={() => downloadPowerExcel(r.reading_date)}
-                    style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                    📥 Excel
-                  </button>
+                  <button onClick={() => download(`${API}/export/power/${r.reading_date}`, `Power_${r.reading_date}.xlsx`)}
+                    style={s.miniBtn}>📥 Excel</button>
                 </div>
                 <div style={s.paramGrid}>
                   <Param label="SEP" value={r.sep_units} unit="KWH" />
@@ -346,13 +287,14 @@ export default function HODDashboard({ token, onBack }: {
                   <Param label="Solar" value={r.solar_units} unit="KWH" />
                   <Param label="Boiler" value={r.boiler_units} unit="KWH" />
                   <Param label="Refinery" value={r.refinery_units} unit="KWH" />
-                  <Param label="MSEDCL" value={r.msedcl_units} unit="KWH" />
-                  <Param label="DG Units" value={r.dg_units} unit="KWH" />
                   <Param label="ETP" value={r.etp_units} unit="KWH" />
+                  <Param label="MSEDCL" value={r.msedcl_units} unit="KWH" />
+                  <Param label="Power Factor" value={r.power_factor} unit="" />
                 </div>
+                {r.dg_reason && <div style={s.remarksBox}>🛢️ DG: {r.dg_reason}</div>}
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
       )}
 
@@ -361,8 +303,7 @@ export default function HODDashboard({ token, onBack }: {
 }
 
 function Param({ label, value, unit, warn }: {
-  label: string; value: number | null;
-  unit: string; warn?: boolean;
+  label: string; value: number | null; unit: string; warn?: boolean;
 }) {
   return (
     <div style={{ ...s.param, ...(warn ? s.paramWarn : {}) }}>
@@ -377,35 +318,32 @@ function Param({ label, value, unit, warn }: {
 
 const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f0f2f5', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  header: { background: '#0f3460', color: '#fff', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 10 },
+  header: { background: '#0f3460', color: '#fff', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, flexWrap: 'wrap' as const },
   headerTitle: { fontSize: 16, fontWeight: 700 },
-  headerSub: { fontSize: 11, opacity: 0.75, marginTop: 2 },
+  headerSub: { fontSize: 11, opacity: 0.7, marginTop: 2 },
   backBtn: { background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 },
-  refreshBtn: { background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13 },
-  dlBtn: { background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  tabs: { display: 'flex', background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 20px', overflowX: 'auto' as const },
-  tab: { padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#666', borderBottom: '2px solid transparent', whiteSpace: 'nowrap' as const },
-  tabActive: { padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#0f3460', fontWeight: 700, borderBottom: '2px solid #0f3460', whiteSpace: 'nowrap' as const },
-  content: { maxWidth: 760, margin: '0 auto', padding: '20px 16px' },
+  refreshBtn: { background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 14 },
+  dlBtn: { background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
+  miniBtn: { background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
+  tabs: { display: 'flex', background: '#fff', borderBottom: '2px solid #e5e7eb', padding: '0 20px' },
+  tab: { padding: '14px 24px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#666', borderBottom: '3px solid transparent', fontWeight: 500 },
+  tabActive: { padding: '14px 24px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#0f3460', fontWeight: 700, borderBottom: '3px solid #0f3460' },
+  sectionInfo: { background: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#555', border: '1px solid #e5e7eb' },
+  content: { maxWidth: 800, margin: '0 auto', padding: '16px 16px 40px' },
   empty: { textAlign: 'center', padding: '60px 20px', color: '#888' },
   msgBox: { background: '#f0fff4', border: '1px solid #86efac', color: '#166534', padding: '10px 20px', fontSize: 13, textAlign: 'center' },
-  card: { background: '#fff', borderRadius: 12, padding: '16px 18px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
-  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f0f0f0' },
-  cardLeft: { display: 'flex', alignItems: 'center', gap: 10 },
-  cardRight: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const },
+  card: { background: '#fff', borderRadius: 12, padding: '16px 18px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #f0f0f0', flexWrap: 'wrap' as const, gap: 8 },
+  cardLeft: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
+  cardRight: { display: 'flex', alignItems: 'center', gap: 8 },
   entryId: { fontSize: 14, fontWeight: 700, color: '#111' },
-  statusBadge: { fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, letterSpacing: '0.05em' },
   shiftBadge: { background: '#eff6ff', color: '#1d4ed8', fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 99 },
   dateText: { fontSize: 12, color: '#666' },
-  paramGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 },
-  param: { background: '#f8f9fa', borderRadius: 8, padding: '8px 10px' },
+  paramGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 8 },
+  param: { background: '#f8f9fa', borderRadius: 8, padding: '7px 10px' },
   paramWarn: { background: '#fff8f0', border: '1px solid #fed7aa' },
-  paramLabel: { fontSize: 10, color: '#888', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  paramLabel: { fontSize: 10, color: '#888', marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
   paramValue: { fontSize: 13, fontWeight: 600 },
-  breakdownAlert: { background: '#fff0f0', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 8 },
-  remarksBox: { background: '#f8f9fa', padding: '8px 12px', borderRadius: 8, fontSize: 13, color: '#555', marginBottom: 8 },
-  actions: { display: 'flex', gap: 10, marginTop: 12 },
-  btnApprove: { flex: 1, padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
-  btnReject: { flex: 1, padding: '10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
-  btnDisabled: { flex: 1, padding: '10px', background: '#aaa', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, cursor: 'not-allowed' },
+  alertBox: { background: '#fff0f0', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 8 },
+  remarksBox: { background: '#f8f9fa', padding: '8px 12px', borderRadius: 8, fontSize: 13, color: '#555', marginTop: 8 },
 };
