@@ -183,12 +183,11 @@ export default function HODDashboard({ token, onBack }: {
                   warn={entry.steam_pressure !== null && (entry.steam_pressure < 6 || entry.steam_pressure > 12)} />
                 <Param label="Steam Flow SEP" value={entry.steam_flow_sep} unit="KG" />
                 <Param label="Steam Flow REFL" value={entry.steam_flow_refl} unit="KG" />
-                <Param label="Drum Water Level" value={entry.drum_water_level} unit="%"
-                  warn={entry.drum_water_level !== null && (entry.drum_water_level < 60 || entry.drum_water_level > 90)} />
+                <Param label="Drum Water Level" value={entry.drum_water_level} unit="%" />
                 <Param label="Bed 1 Top Temp" value={entry.bed1_top_temp} unit="°C" />
                 <Param label="Bed 2 Top Temp" value={entry.bed2_top_temp} unit="°C" />
                 <Param label="Flue Gas Temp" value={entry.flue_gas_temp} unit="°C"
-                  warn={entry.flue_gas_temp !== null && entry.flue_gas_temp > 200} />
+                  warn={entry.flue_gas_temp !== null && entry.flue_gas_temp > 220} />
                 <Param label="Feed Water Temp" value={entry.feed_water_temp} unit="°C" />
               </div>
 

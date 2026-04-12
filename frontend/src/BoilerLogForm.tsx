@@ -57,14 +57,12 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
   const validate = () => {
     const w: string[] = [];
     const p = parseFloat(form.steam_pressure);
-    const d = parseFloat(form.drum_water_level);
     const f = parseFloat(form.flue_gas_temp);
+
     if (form.steam_pressure && (p < 8 || p > 12))
       w.push(`⚠️ Steam Pressure ${p} is outside safe range (8–12 KG/CM)`);
-    if (form.drum_water_level && (d < 60 || d > 90))
-      w.push(`⚠️ Drum Water Level ${d}% is outside safe range (60–90%)`);
-    if (form.flue_gas_temp && f > 200)
-      w.push(`⚠️ Flue Gas Temp ${f}°C is too high (max 200°C)`);
+    if (form.flue_gas_temp && f > 220)
+      w.push(`⚠️ Flue Gas Temp ${f}°C is too high (max 220°C)`);
     return w;
   };
 
