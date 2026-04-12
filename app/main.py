@@ -471,6 +471,264 @@ def export_daily_boiler_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=Daily_Boiler_Report_{date}.xlsx"}
     )
+@app.get("/daily-report/recent")
+def get_recent_coal_reports(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import desc
+    reports = db.query(models.DailyCoalSteam).order_by(
+        desc(models.DailyCoalSteam.report_date)
+    ).limit(31).all()
+    return reports
+
+@app.get("/power-consumption/recent")
+def get_recent_power_reports(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import desc
+    reports = db.query(models.PowerConsumption).order_by(
+        desc(models.PowerConsumption.reading_date)
+    ).limit(31).all()
+    return reports
+
+@app.get("/export/power/{date}")
+def export_power_excel(
+    date: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from datetime import datetime
+    report = db.query(models.PowerConsumption).filter(
+        models.PowerConsumption.reading_date == date
+    ).first()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    blue_fill = PatternFill("solid", fgColor="BDD7EE")
+    yellow_fill = PatternFill("solid", fgColor="FFFF00")
+
+    try:
+        d = datetime.strptime(date, "%Y-%m-%d")
+        month_year = d.strftime("%b. -%Y").upper()
+        date_display = d.strftime("%d/%m/%Y")
+    except:
+        month_year = date
+        date_display = date
+
+    # Title
+    ws.merge_cells("A1:D1")
+    ws["A1"] = f"POWER CONSUMPTION DAILY REPORT - {month_year}"
+    ws["A1"].font = Font(bold=True, size=12)
+    ws["A1"].alignment = center
+
+    # Header row
+    headers = ["SR.NO.", "SECTION NAME", f"UNIT (KWH)\n{date_display}", "REMARKS"]
+    for i, h in enumerate(headers, 1):
+        c = ws.cell(row=2, column=i, value=h)
+        c.font = bold; c.fill = blue_fill; c.alignment = Alignment(horizontal="center", wrap_text=True); c.border = border
+    ws.row_dimensions[2].height = 30
+
+    sections = [
+        (1, "SEP", report.sep_units if report else 0),
+        (2, "PREP", report.prep_units if report else 0),
+        (None, "SOLAR", report.solar_units if report else 0),
+        (3, "SILO", report.silo_units if report else 0),
+        (4, "DOC", report.doc_units if report else 0),
+        (5, "D-SILO", report.dsilo_units if report else 0),
+        (6, "ACM/ SOYA CHUNKS", report.acm_units if report else 0),
+        (7, "BOILER", report.boiler_units if report else 0),
+        (8, "CHP", report.chp_units if report else 0),
+        (9, "DM", report.dm_units if report else 0),
+        (None, "UG TANK", report.ug_tank_units if report else 0),
+        (10, "REFINERY", report.refinery_units if report else 0),
+        (11, "ETP/ACID/MVR", report.etp_units if report else 0),
+        (12, "PACKING", report.packing_units if report else 0),
+        (13, "ADMIN", report.admin_units if report else 0),
+        (15, "MISCELLENIOUS", 0),
+        (16, "DG SET UNIT", report.dg_units if report else 0),
+    ]
+
+    row = 3
+    for sr, name, val in sections:
+        ws.cell(row, 1, sr).border = border
+        ws.cell(row, 1).alignment = center
+        ws.cell(row, 2, name).border = border
+        ws.cell(row, 2).font = bold if sr else Font()
+        c = ws.cell(row, 3, val)
+        c.border = border; c.alignment = center
+        ws.cell(row, 4).border = border
+        row += 1
+
+    # Totals
+    total = (report.sep_units or 0) + (report.prep_units or 0) + (report.solar_units or 0) + \
+            (report.silo_units or 0) + (report.doc_units or 0) + (report.dsilo_units or 0) + \
+            (report.acm_units or 0) + (report.boiler_units or 0) + (report.chp_units or 0) + \
+            (report.dm_units or 0) + (report.ug_tank_units or 0) + (report.refinery_units or 0) + \
+            (report.etp_units or 0) + (report.packing_units or 0) + (report.admin_units or 0) + \
+            (report.dg_units or 0) if report else 0
+    solar = report.solar_units or 0 if report else 0
+
+    ws.cell(row, 2, "TOTAL UNIT WITH SOLAR GEN. UNIT").font = bold
+    ws.cell(row, 3, total).fill = yellow_fill; ws.cell(row, 3).font = Font(bold=True); row+=1
+    ws.cell(row, 2, "TOTAL SECTION UNIT WITHOUT SOLAR UNIT").font = bold
+    ws.cell(row, 3, total - solar).fill = yellow_fill; ws.cell(row, 3).font = Font(bold=True); row+=1
+    ws.cell(row, 2, "MSEDCL UNIT (KWH)").font = bold
+    ws.cell(row, 3, report.msedcl_units if report else 0); row+=1
+    ws.cell(row, 2, "POWER (KVAH)").font = bold
+    ws.cell(row, 3, report.power_kvah if report else 0); row+=1
+    ws.cell(row, 2, "POWER FACTOR").font = bold
+    ws.cell(row, 3, report.power_factor if report else 0); row+=2
+
+    # DG/Diesel section
+    ws.merge_cells(f"A{row}:D{row}")
+    ws[f"A{row}"] = "DG SET & DIESEL REPORT"
+    ws[f"A{row}"].font = Font(bold=True); ws[f"A{row}"].fill = blue_fill
+    ws[f"A{row}"].alignment = center; row+=1
+
+    dg_headers = ["DATE", "O/P STOCK (Ltr)", "DIESEL RECEIVED", "D.G. CONSUMPTION", "DETAILS", "D.G. UNITS", "C/L STOCK (Ltr)"]
+    for i, h in enumerate(dg_headers, 1):
+        if i <= 4:
+            c = ws.cell(row, i, h)
+            c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
+    row+=1
+
+    if report:
+        ws.cell(row, 1, date_display)
+        ws.cell(row, 2, report.diesel_opening_stock)
+        ws.cell(row, 3, report.diesel_received)
+        ws.cell(row, 4, report.diesel_consumed)
+        ws.cell(row, 1).border = border; ws.cell(row, 2).border = border
+        ws.cell(row, 3).border = border; ws.cell(row, 4).border = border
+
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 28
+    ws.column_dimensions['C'].width = 16
+    ws.column_dimensions['D'].width = 16
+
+    buffer = BytesIO()
+    wb.save(buffer); buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Power_Consumption_{date}.xlsx"}
+    )
+
+@app.get("/export/monthly-coal/{year}/{month}")
+def export_monthly_coal_excel(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    import calendar
+    from datetime import date, datetime
+
+    month_name = datetime(year, month, 1).strftime("%b").upper()
+    reports = db.query(models.DailyCoalSteam).filter(
+        models.DailyCoalSteam.report_date >= f"{year}-{month:02d}-01",
+        models.DailyCoalSteam.report_date <= f"{year}-{month:02d}-{calendar.monthrange(year,month)[1]}"
+    ).order_by(models.DailyCoalSteam.report_date).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    blue_fill = PatternFill("solid", fgColor="BDD7EE")
+    yellow_fill = PatternFill("solid", fgColor="FFFF00")
+
+    # Header rows exactly matching father's file
+    ws["A1"] = "SHALIMAR NUTRIENTS PRIVATE LIMITED"
+    ws["A1"].font = Font(bold=True, size=13)
+    ws["A2"] = "BOILER SECTION"
+    ws["A2"].font = bold
+    ws["A3"] = f"COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}"
+    ws["A3"].font = Font(bold=True, size=11)
+    ws.merge_cells("A3:O3")
+    ws["A3"].alignment = center
+
+    # Column headers exactly matching father's file
+    col_headers = [
+        "DATE", "OPENING STOCK OF COAL IN MT", "ARRIVAL COAL IN MT",
+        "COAL CONSUMPTION IN MT (SEP)", "CLOSING STOCK",
+        "COAL CONSUMPTION IN MT (REF.)", "TOTAL COAL FOR STEAM PRODUCTION",
+        "COAL CONSUMPTION IN THERMIC BOILER IN MT",
+        "COAL CONSUMPTION IN MT (TOTAL)", "CLOSING STOCK IN MT",
+        "STEAM PRODUCTION IN KG (SEP)", "STEAM PRODUCTION IN KG (REF.)",
+        "TOTAL STEAM PRODUCTION IN KG", "C/S RATIO", "FEED WATER TEMP (°C)"
+    ]
+
+    for i, h in enumerate(col_headers, 1):
+        c = ws.cell(4, i, h)
+        c.font = bold; c.fill = blue_fill
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = border
+    ws.row_dimensions[4].height = 50
+
+    # Data rows
+    total_coal_sum = 0; total_steam_sum = 0
+    for r in reports:
+        row_num = ws.max_row + 1
+        date_val = r.report_date
+        total_coal = r.total_coal_consumed or 0
+        total_steam = r.total_steam or 0
+        total_coal_sum += total_coal; total_steam_sum += total_steam
+
+        row_data = [
+            date_val, r.opening_coal_stock,
+            (r.coal_arrival_indian or 0) + (r.coal_arrival_imported or 0),
+            r.coal_consumed_sep, r.closing_stock,
+            r.coal_consumed_refinery,
+            (r.coal_consumed_sep or 0) + (r.coal_consumed_refinery or 0),
+            r.coal_thermic, total_coal, r.closing_stock,
+            r.steam_sep_consumed, r.steam_refl_consumed,
+            total_steam, r.cs_ratio, r.feed_water_temp
+        ]
+        for i, val in enumerate(row_data, 1):
+            c = ws.cell(row_num, i, val)
+            c.border = border; c.alignment = center
+            # Highlight C/S ratio
+            if i == 14 and val:
+                if 5.0 <= float(val) <= 5.6:
+                    c.fill = PatternFill("solid", fgColor="E2EFDA")
+                else:
+                    c.fill = PatternFill("solid", fgColor="FADBD8")
+
+    # Totals row
+    total_row = ws.max_row + 1
+    ws.cell(total_row, 1, "TOTAL").font = Font(bold=True)
+    ws.cell(total_row, 9, round(total_coal_sum, 3)).font = Font(bold=True)
+    ws.cell(total_row, 9).fill = yellow_fill
+    ws.cell(total_row, 13, total_steam_sum).font = Font(bold=True)
+    ws.cell(total_row, 13).fill = yellow_fill
+    avg_cs = round(total_steam_sum / total_coal_sum, 3) if total_coal_sum > 0 else 0
+    ws.cell(total_row, 14, avg_cs).font = Font(bold=True)
+    ws.cell(total_row, 14).fill = yellow_fill
+
+    # Column widths
+    widths = [12, 18, 14, 18, 14, 18, 18, 18, 16, 14, 16, 16, 16, 12, 14]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    buffer = BytesIO()
+    wb.save(buffer); buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Coal_Steam_{month_name}_{year}.xlsx"}
+    )
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
