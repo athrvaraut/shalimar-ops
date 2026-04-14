@@ -117,6 +117,12 @@ class PowerConsumption(Base):
     status = Column(String, default="pending")
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    voltage_r_morning = Column(Float, nullable=True)
+    voltage_y_morning = Column(Float, nullable=True)
+    voltage_b_morning = Column(Float, nullable=True)
+    voltage_r_evening = Column(Float, nullable=True)
+    voltage_y_evening = Column(Float, nullable=True)
+    voltage_b_evening = Column(Float, nullable=True)
 
 class MonthlyCoalRate(Base):
     __tablename__ = "monthly_coal_rate"

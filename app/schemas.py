@@ -135,3 +135,9 @@ class PowerConsumptionCreate(BaseModel):
     diesel_consumed: float = 0
     dg_generated_units: float = 0
     dg_reason: Optional[str] = None
+    voltage_r_morning: Optional[float] = None
+    voltage_y_morning: Optional[float] = None
+    voltage_b_morning: Optional[float] = None
+    voltage_r_evening: Optional[float] = None
+    voltage_y_evening: Optional[float] = None
+    voltage_b_evening: Optional[float] = None

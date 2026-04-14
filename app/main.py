@@ -295,6 +295,14 @@ def submit_power(
         diesel_consumed=data.diesel_consumed,
         dg_generated_units=data.dg_generated_units,
         dg_reason=data.dg_reason,
+        
+        # 👇 PASTE THE NEW VOLTAGE FIELDS HERE 👇
+        voltage_r_morning=data.voltage_r_morning,
+        voltage_y_morning=data.voltage_y_morning,
+        voltage_b_morning=data.voltage_b_morning,
+        voltage_r_evening=data.voltage_r_evening,
+        voltage_y_evening=data.voltage_y_evening,
+        voltage_b_evening=data.voltage_b_evening,
     )
     db.add(report)
     db.commit()
@@ -476,14 +484,11 @@ def get_recent_coal_reports(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    try:
-        from sqlalchemy import desc, text
-        results = db.execute(
-            text("SELECT * FROM daily_coal_steam ORDER BY id DESC LIMIT 31")
-        ).mappings().all()
-        return [dict(r) for r in results]
-    except Exception as e:
-        return []
+    from sqlalchemy import text
+    results = db.execute(
+        text("SELECT * FROM daily_coal_steam ORDER BY id DESC LIMIT 31")
+    ).mappings().all()
+    return [dict(r) for r in results]
 
 @app.get("/power-consumption/recent")
 def get_recent_power_reports(

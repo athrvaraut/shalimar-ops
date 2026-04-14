@@ -26,9 +26,14 @@ const SECTIONS = [
 
 export default function PowerConsumptionForm({ token, onBack }: Props) {
   const initForm = () => {
-    const base: any = { reading_date: today(), power_kvah: '', power_factor: '',
+    const base: any = {
+      reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
-      dg_generated_units: '', dg_reason: '' };
+      dg_generated_units: '', dg_reason: '',
+      // 👇 Added the new voltage fields here 👇
+      voltage_r_morning: '', voltage_y_morning: '', voltage_b_morning: '',
+      voltage_r_evening: '', voltage_y_evening: '', voltage_b_evening: ''
+    };
     SECTIONS.forEach(s => base[s.key] = '');
     return base;
   };
@@ -200,6 +205,73 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             ✅ Power consumption report submitted! Total: {totalUnits.toFixed(0)} KWH
           </div>
         )}
+        {/* Voltage Readings */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>⚡ Voltage Readings (V)</div>
+          <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
+            Read from main panel voltmeter — record morning and evening
+          </div>
+          <div style={s.row3}>
+            <div style={s.field}>
+              <label style={s.label}>Phase R - Morning (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_r_morning}
+                onChange={e => set('voltage_r_morning', e.target.value)}
+                placeholder="e.g. 395" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Phase Y - Morning (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_y_morning}
+                onChange={e => set('voltage_y_morning', e.target.value)}
+                placeholder="e.g. 397" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Phase B - Morning (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_b_morning}
+                onChange={e => set('voltage_b_morning', e.target.value)}
+                placeholder="e.g. 393" />
+            </div>
+          </div>
+          <div style={s.row3}>
+            <div style={s.field}>
+              <label style={s.label}>Phase R - Evening (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_r_evening}
+                onChange={e => set('voltage_r_evening', e.target.value)}
+                placeholder="e.g. 443" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Phase Y - Evening (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_y_evening}
+                onChange={e => set('voltage_y_evening', e.target.value)}
+                placeholder="e.g. 447" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Phase B - Evening (V)</label>
+              <input style={s.input} type="number"
+                value={form.voltage_b_evening}
+                onChange={e => set('voltage_b_evening', e.target.value)}
+                placeholder="e.g. 441" />
+            </div>
+          </div>
+
+          {/* Live voltage alert */}
+          {(parseFloat(form.voltage_r_evening) > 440 ||
+            parseFloat(form.voltage_y_evening) > 440 ||
+            parseFloat(form.voltage_b_evening) > 440) && (
+              <div style={{
+                background: '#fff0f0', border: '1px solid #fecaca',
+                color: '#dc2626', padding: '10px 14px',
+                borderRadius: 8, fontSize: 13, marginTop: 10
+              }}>
+                ⚠️ Evening voltage exceeds 440V — MSEDCL legal limit is 439.9V.
+                This is being logged as evidence.
+              </div>
+            )}
+        </div>
 
         <button type="submit" style={loading ? s.btnDisabled : s.btn} disabled={loading}>
           {loading ? 'Submitting...' : '📤 Submit Power Report'}
