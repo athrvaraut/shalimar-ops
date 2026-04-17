@@ -3,6 +3,7 @@ import DailyCoalSteamForm from './DailyCoalSteamForm';
 import HODDashboard from './HODDashboard';
 import React, { useState } from 'react';
 import BoilerLogForm from './BoilerLogForm';
+import HistoryPage from './HistoryPage';
 
 function App() {
   const [token, setToken] = useState<string | null>(
@@ -123,25 +124,27 @@ function LoginPage({ onLogin }: { onLogin: (token: string, role: string) => void
 }
 
 // ─── DASHBOARD (placeholder) ─────────────────────────────
-function Dashboard({ role, token, onLogout }: { 
-  role: string; 
+function Dashboard({ role, token, onLogout }: {
+  role: string;
   token: string;
-  onLogout: () => void 
+  onLogout: () => void
 }) {
-  const [page, setPage] = useState<'home' | 'boiler-log' | 'hod-dashboard' | 'coal-steam' | 'power'>('home');
-
+  const [page, setPage] = useState<'home' | 'boiler-log' | 'hod-dashboard' | 'coal-steam' | 'power' | 'history'>('home');
   if (page === 'boiler-log') {
     return <BoilerLogForm token={token} onBack={() => setPage('home')} />;
   }
   if (page === 'hod-dashboard') {
-  return <HODDashboard token={token} onBack={() => setPage('home')} />;
-}
-if (page === 'coal-steam') {
-  return <DailyCoalSteamForm token={token} onBack={() => setPage('home')} />;
-}
-if (page === 'power') {
-  return <PowerConsumptionForm token={token} onBack={() => setPage('home')} />;
-}
+    return <HODDashboard token={token} onBack={() => setPage('home')} />;
+  }
+  if (page === 'coal-steam') {
+    return <DailyCoalSteamForm token={token} onBack={() => setPage('home')} />;
+  }
+  if (page === 'power') {
+    return <PowerConsumptionForm token={token} onBack={() => setPage('home')} />;
+  }
+  if (page === 'history') {
+    return <HistoryPage token={token!} onBack={() => setPage('home')} />;
+  }
 
   return (
     <div style={styles.dashBg}>
@@ -153,7 +156,7 @@ if (page === 'power') {
         <button onClick={onLogout} style={styles.logoutBtn}>Logout</button>
       </div>
 
-            <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 16px' }}>
+      <div style={{ maxWidth: 600, margin: '40px auto', padding: '0 16px' }}>
         {/* Boiler Log Card */}
         <div onClick={() => setPage('boiler-log')} style={styles.menuCard}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🔥</div>
@@ -172,18 +175,26 @@ if (page === 'power') {
             <div style={{ fontSize: 12, color: '#666' }}>Review & approve pending entries</div>
           </div>
         )}
-          <div onClick={() => setPage('coal-steam')}
-            style={{ ...styles.menuCard, marginTop: 20 }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>🪨</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Daily Coal & Steam</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Auto C/S ratio · Replaces daily Excel</div>
-           </div>
-           <div onClick={() => setPage('power')}
-            style={{ ...styles.menuCard, marginTop: 20 }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>⚡</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Power Consumption</div>
-            <div style={{ fontSize: 12, color: '#666' }}>Daily units · Solar tracking · DG log</div>
+        <div onClick={() => setPage('coal-steam')}
+          style={{ ...styles.menuCard, marginTop: 20 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🪨</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Daily Coal & Steam</div>
+          <div style={{ fontSize: 12, color: '#666' }}>Auto C/S ratio · Replaces daily Excel</div>
+        </div>
+        <div onClick={() => setPage('power')}
+          style={{ ...styles.menuCard, marginTop: 20 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>⚡</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Power Consumption</div>
+          <div style={{ fontSize: 12, color: '#666' }}>Daily units · Solar tracking · DG log</div>
+        </div>
+        <div onClick={() => setPage('history')}
+          style={{ ...styles.menuCard, marginTop: 20 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>📚</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Previous Data</div>
+          <div style={{ fontSize: 12, color: '#666' }}>
+            Boiler · Coal · Power history with date filter
           </div>
+        </div>
       </div>
     </div>
   );
@@ -333,15 +344,15 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 360,
   },
   menuCard: {
-  background: '#fff',
-  borderRadius: 16,
-  padding: '32px 28px',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-  cursor: 'pointer',
-  textAlign: 'center' as const,
-  border: '2px solid transparent',
-  transition: 'all 0.2s',
-},
+    background: '#fff',
+    borderRadius: 16,
+    padding: '32px 28px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+    cursor: 'pointer',
+    textAlign: 'center' as const,
+    border: '2px solid transparent',
+    transition: 'all 0.2s',
+  },
 };
 
 export default App;

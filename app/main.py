@@ -741,6 +741,42 @@ def export_monthly_coal_excel(
         headers={"Content-Disposition": f"attachment; filename=Coal_Steam_{month_name}_{year}.xlsx"}
     )
 
+@app.get("/history/boiler")
+def history_boiler(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    prefix = f"{year}-{str(month).zfill(2)}"
+    logs = db.query(models.BoilerLogEntry).filter(
+        models.BoilerLogEntry.log_date.like(f"{prefix}%")
+    ).order_by(models.BoilerLogEntry.log_date, models.BoilerLogEntry.log_time).all()
+    return logs
+
+@app.get("/history/coal")
+def history_coal(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    prefix = f"{year}-{str(month).zfill(2)}"
+    reports = db.query(models.DailyCoalSteam).filter(
+        models.DailyCoalSteam.report_date.like(f"{prefix}%")
+    ).order_by(models.DailyCoalSteam.report_date).all()
+    return reports
+
+@app.get("/history/power")
+def history_power(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    prefix = f"{year}-{str(month).zfill(2)}"
+    reports = db.query(models.PowerConsumption).filter(
+        models.PowerConsumption.reading_date.like(f"{prefix}%")
+    ).order_by(models.PowerConsumption.reading_date).all()
+    return reports
+
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
 @app.get("/")

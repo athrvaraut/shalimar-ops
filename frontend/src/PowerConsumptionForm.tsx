@@ -27,6 +27,7 @@ const SECTIONS = [
 export default function PowerConsumptionForm({ token, onBack }: Props) {
   const initForm = () => {
     const base: any = {
+      shift: 'A',  // A, B, or C
       reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
       dg_generated_units: '', dg_reason: '',
@@ -110,6 +111,22 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             <label style={s.label}>Date *</label>
             <input style={s.input} type="date" value={form.reading_date}
               onChange={e => set('reading_date', e.target.value)} required />
+          </div>
+        </div>
+        <div style={s.row2}>
+          <div style={s.field}>
+            <label style={s.label}>Date *</label>
+            <input style={s.input} type="date" value={form.reading_date}
+              onChange={e => set('reading_date', e.target.value)} required />
+          </div>
+          <div style={s.field}>
+            <label style={s.label}>Shift *</label>
+            <select style={s.select} value={form.shift}
+              onChange={e => set('shift', e.target.value)}>
+              <option value="A">Shift A (7AM – 3PM)</option>
+              <option value="B">Shift B (3PM – 11PM)</option>
+              <option value="C">Shift C (11PM – 7AM)</option>
+            </select>
           </div>
         </div>
 
@@ -207,70 +224,74 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         )}
         {/* Voltage Readings */}
         <div style={s.section}>
-          <div style={s.sectionTitle}>⚡ Voltage Readings (V)</div>
+          <div style={s.sectionTitle}>⚡ Voltage & Current Readings</div>
           <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
-            Read from main panel voltmeter — record morning and evening
+            Read from MFM-13 (red VOLT display) and Secure Elite 440
           </div>
           <div style={s.row3}>
             <div style={s.field}>
-              <label style={s.label}>Phase R - Morning (V)</label>
-              <input style={s.input} type="number"
-                value={form.voltage_r_morning}
-                onChange={e => set('voltage_r_morning', e.target.value)}
-                placeholder="e.g. 395" />
+              <label style={s.label}>L12 Voltage (V)</label>
+              <input style={s.input} type="number" step="0.1"
+                value={form.voltage_l12}
+                onChange={e => set('voltage_l12', e.target.value)}
+                placeholder="e.g. 374.7" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase Y - Morning (V)</label>
-              <input style={s.input} type="number"
-                value={form.voltage_y_morning}
-                onChange={e => set('voltage_y_morning', e.target.value)}
-                placeholder="e.g. 397" />
+              <label style={s.label}>L23 Voltage (V)</label>
+              <input style={s.input} type="number" step="0.1"
+                value={form.voltage_l23}
+                onChange={e => set('voltage_l23', e.target.value)}
+                placeholder="e.g. 373.6" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase B - Morning (V)</label>
-              <input style={s.input} type="number"
-                value={form.voltage_b_morning}
-                onChange={e => set('voltage_b_morning', e.target.value)}
-                placeholder="e.g. 393" />
+              <label style={s.label}>L31 Voltage (V)</label>
+              <input style={s.input} type="number" step="0.1"
+                value={form.voltage_l31}
+                onChange={e => set('voltage_l31', e.target.value)}
+                placeholder="e.g. 374.4" />
             </div>
           </div>
           <div style={s.row3}>
             <div style={s.field}>
-              <label style={s.label}>Phase R - Evening (V)</label>
+              <label style={s.label}>Phase 1 Current (A)</label>
               <input style={s.input} type="number"
-                value={form.voltage_r_evening}
-                onChange={e => set('voltage_r_evening', e.target.value)}
-                placeholder="e.g. 443" />
+                value={form.current_l1}
+                onChange={e => set('current_l1', e.target.value)}
+                placeholder="e.g. 1558" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase Y - Evening (V)</label>
+              <label style={s.label}>Phase 2 Current (A)</label>
               <input style={s.input} type="number"
-                value={form.voltage_y_evening}
-                onChange={e => set('voltage_y_evening', e.target.value)}
-                placeholder="e.g. 447" />
+                value={form.current_l2}
+                onChange={e => set('current_l2', e.target.value)}
+                placeholder="e.g. 1688" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase B - Evening (V)</label>
+              <label style={s.label}>Phase 3 Current (A)</label>
               <input style={s.input} type="number"
-                value={form.voltage_b_evening}
-                onChange={e => set('voltage_b_evening', e.target.value)}
-                placeholder="e.g. 441" />
+                value={form.current_l3}
+                onChange={e => set('current_l3', e.target.value)}
+                placeholder="e.g. 1557" />
             </div>
           </div>
 
-          {/* Live voltage alert */}
-          {(parseFloat(form.voltage_r_evening) > 440 ||
-            parseFloat(form.voltage_y_evening) > 440 ||
-            parseFloat(form.voltage_b_evening) > 440) && (
+          {/* Live current imbalance warning */}
+          {form.current_l1 && form.current_l2 && form.current_l3 && (() => {
+            const avg = (parseFloat(form.current_l1) + parseFloat(form.current_l2) + parseFloat(form.current_l3)) / 3;
+            const max = Math.max(parseFloat(form.current_l1), parseFloat(form.current_l2), parseFloat(form.current_l3));
+            const imbalance = ((max - avg) / avg * 100).toFixed(1);
+            if (parseFloat(imbalance) > 5) return (
               <div style={{
                 background: '#fff0f0', border: '1px solid #fecaca',
-                color: '#dc2626', padding: '10px 14px',
-                borderRadius: 8, fontSize: 13, marginTop: 10
+                color: '#dc2626', padding: '10px 14px', borderRadius: 8,
+                fontSize: 13, marginTop: 10
               }}>
-                ⚠️ Evening voltage exceeds 440V — MSEDCL legal limit is 439.9V.
-                This is being logged as evidence.
+                ⚠️ Current imbalance: {imbalance}% (limit: 5%). Phase 2 overloaded.
+                Logged as evidence. Inform HOD.
               </div>
-            )}
+            );
+            return null;
+          })()}
         </div>
 
         <button type="submit" style={loading ? s.btnDisabled : s.btn} disabled={loading}>
