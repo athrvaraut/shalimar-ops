@@ -46,7 +46,7 @@ export default function HistoryPage({ token, onBack }: Props) {
   // Group data by date
   const byDate: Record<string, any[]> = {};
   data.forEach(item => {
-    const date = item.log_date || item.report_date || item.reading_date || '';
+    const date = String(item.log_date || item.report_date || item.reading_date || '').slice(0, 10);
     if (!byDate[date]) byDate[date] = [];
     byDate[date].push(item);
   });

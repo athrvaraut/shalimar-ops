@@ -747,11 +747,14 @@ def history_boiler(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    prefix = f"{year}-{str(month).zfill(2)}"
-    logs = db.query(models.BoilerLogEntry).filter(
-        models.BoilerLogEntry.log_date.like(f"{prefix}%")
-    ).order_by(models.BoilerLogEntry.log_date, models.BoilerLogEntry.log_time).all()
-    return logs
+    from sqlalchemy import text, extract
+    results = db.execute(text(
+        "SELECT * FROM boiler_log_entries "
+        "WHERE EXTRACT(YEAR FROM log_date) = :year "
+        "AND EXTRACT(MONTH FROM log_date) = :month "
+        "ORDER BY log_date ASC, log_time ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
 
 @app.get("/history/coal")
 def history_coal(
@@ -759,11 +762,14 @@ def history_coal(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    prefix = f"{year}-{str(month).zfill(2)}"
-    reports = db.query(models.DailyCoalSteam).filter(
-        models.DailyCoalSteam.report_date.like(f"{prefix}%")
-    ).order_by(models.DailyCoalSteam.report_date).all()
-    return reports
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM daily_coal_steam "
+        "WHERE EXTRACT(YEAR FROM report_date) = :year "
+        "AND EXTRACT(MONTH FROM report_date) = :month "
+        "ORDER BY report_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
 
 @app.get("/history/power")
 def history_power(
@@ -771,11 +777,14 @@ def history_power(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    prefix = f"{year}-{str(month).zfill(2)}"
-    reports = db.query(models.PowerConsumption).filter(
-        models.PowerConsumption.reading_date.like(f"{prefix}%")
-    ).order_by(models.PowerConsumption.reading_date).all()
-    return reports
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM power_consumption "
+        "WHERE EXTRACT(YEAR FROM reading_date) = :year "
+        "AND EXTRACT(MONTH FROM reading_date) = :month "
+        "ORDER BY reading_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
