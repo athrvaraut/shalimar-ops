@@ -1,5 +1,4 @@
 import PowerConsumptionForm from './PowerConsumptionForm';
-import DailyCoalSteamForm from './DailyCoalSteamForm';
 import HODDashboard from './HODDashboard';
 import React, { useState } from 'react';
 import BoilerLogForm from './BoilerLogForm';
@@ -136,9 +135,6 @@ function Dashboard({ role, token, onLogout }: {
   if (page === 'hod-dashboard') {
     return <HODDashboard token={token} onBack={() => setPage('home')} />;
   }
-  if (page === 'coal-steam') {
-    return <DailyCoalSteamForm token={token} onBack={() => setPage('home')} />;
-  }
   if (page === 'power') {
     return <PowerConsumptionForm token={token} onBack={() => setPage('home')} />;
   }
@@ -175,12 +171,6 @@ function Dashboard({ role, token, onLogout }: {
             <div style={{ fontSize: 12, color: '#666' }}>Review & approve pending entries</div>
           </div>
         )}
-        <div onClick={() => setPage('coal-steam')}
-          style={{ ...styles.menuCard, marginTop: 20 }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🪨</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Daily Coal & Steam</div>
-          <div style={{ fontSize: 12, color: '#666' }}>Auto C/S ratio · Replaces daily Excel</div>
-        </div>
         <div onClick={() => setPage('power')}
           style={{ ...styles.menuCard, marginTop: 20 }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>⚡</div>

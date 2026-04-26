@@ -27,7 +27,9 @@ const SECTIONS = [
 export default function PowerConsumptionForm({ token, onBack }: Props) {
   const initForm = () => {
     const base: any = {
-      shift: 'A',  // A, B, or C
+      shift: 'A',
+      msedcl_kwh: '',
+      msedcl_kvah: '',
       reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
       dg_generated_units: '', dg_reason: '',
@@ -107,26 +109,21 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         {/* Date */}
         <div style={s.section}>
           <div style={s.sectionTitle}>📅 Report Date</div>
-          <div style={{ maxWidth: 200 }}>
-            <label style={s.label}>Date *</label>
-            <input style={s.input} type="date" value={form.reading_date}
-              onChange={e => set('reading_date', e.target.value)} required />
-          </div>
-        </div>
-        <div style={s.row2}>
-          <div style={s.field}>
-            <label style={s.label}>Date *</label>
-            <input style={s.input} type="date" value={form.reading_date}
-              onChange={e => set('reading_date', e.target.value)} required />
-          </div>
-          <div style={s.field}>
-            <label style={s.label}>Shift *</label>
-            <select style={s.select} value={form.shift}
-              onChange={e => set('shift', e.target.value)}>
-              <option value="A">Shift A (7AM – 3PM)</option>
-              <option value="B">Shift B (3PM – 11PM)</option>
-              <option value="C">Shift C (11PM – 7AM)</option>
-            </select>
+          <div style={s.row2}>
+            <div style={s.field}>
+              <label style={s.label}>Date *</label>
+              <input style={s.input} type="date" value={form.reading_date}
+                onChange={e => set('reading_date', e.target.value)} required />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Shift *</label>
+              <select style={s.select} value={form.shift}
+                onChange={e => set('shift', e.target.value)}>
+                <option value="A">Shift A (7AM–3PM)</option>
+                <option value="B">Shift B (3PM–11PM)</option>
+                <option value="C">Shift C (11PM–7AM)</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -134,12 +131,12 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         <div style={{ ...s.section, background: '#f0fdf4', border: '2px solid #86efac' }}>
           <div style={s.sectionTitle}>⚡ Live Summary</div>
           <div style={s.ratioGrid}>
-            <SummaryBox label="Total Consumption" value={`${totalUnits.toFixed(0)} KWH`} color="#0f3460" />
-            <SummaryBox label="Solar Generated" value={`${solarUnits.toFixed(0)} KWH`} color="#059669" />
-            <SummaryBox label="Grid (MSEDCL+DG)" value={`${gridUnits.toFixed(0)} KWH`} color="#7c3aed" />
-            <SummaryBox label="Solar Savings %" value={
-              totalUnits > 0 ? `${((solarUnits / totalUnits) * 100).toFixed(1)}%` : '—'
-            } color="#ea580c" />
+            <SummaryBox label="Total KWH" value={`${totalUnits.toFixed(0)}`} color="#0f3460" />
+            <SummaryBox label="Total KVAh" value={form.power_kvah ? `${parseFloat(form.power_kvah).toFixed(0)}` : '—'} color="#7c3aed" />
+            <SummaryBox label="Solar KWH" value={`${solarUnits.toFixed(0)}`} color="#059669" />
+            <SummaryBox label="MSEDCL KWH" value={form.msedcl_units ? `${parseFloat(form.msedcl_units).toFixed(0)}` : '—'} color="#0284c7" />
+            <SummaryBox label="DG KWH" value={`${(parseFloat(form.dg_units) || 0).toFixed(0)}`} color="#d97706" />
+            <SummaryBox label="Solar Savings %" value={totalUnits > 0 ? `${((solarUnits / totalUnits) * 100).toFixed(1)}%` : '—'} color="#ea580c" />
           </div>
         </div>
 
@@ -162,18 +159,46 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         {/* Power quality */}
         <div style={s.section}>
           <div style={s.sectionTitle}>📊 Power Quality</div>
-          <div style={s.row2}>
+          <div style={s.row3}>
             <div style={s.field}>
-              <label style={s.label}>Total kVAh</label>
+              <label style={s.label}>MSEDCL KWH (Units)</label>
               <input style={s.input} type="number" step="any"
-                value={form.power_kvah} onChange={e => set('power_kvah', e.target.value)}
-                placeholder="—" />
+                value={form.msedcl_kwh}
+                onChange={e => set('msedcl_kwh', e.target.value)}
+                placeholder="e.g. 25680" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Power Factor</label>
-              <input style={s.input} type="number" step="0.01" min="0" max="1"
-                value={form.power_factor} onChange={e => set('power_factor', e.target.value)}
-                placeholder="0.95" />
+              <label style={s.label}>Total kVAh (MSEDCL)</label>
+              <input style={s.input} type="number" step="any"
+                value={form.power_kvah}
+                onChange={e => set('power_kvah', e.target.value)}
+                placeholder="e.g. 25710" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Power Factor (Auto)</label>
+              <input style={{ ...s.input, background: '#f0fdf4', fontWeight: 700 }}
+                type="text" readOnly
+                value={
+                  form.msedcl_kwh && form.power_kvah && parseFloat(form.power_kvah) > 0
+                    ? (parseFloat(form.msedcl_kwh) / parseFloat(form.power_kvah)).toFixed(4)
+                    : '—'
+                } />
+            </div>
+          </div>
+          <div style={{ ...s.row2, marginTop: 10 }}>
+            <div style={s.field}>
+              <label style={s.label}>MSEDCL Units (KWH) <span style={{ fontWeight: 400, color: '#888' }}>from meter</span></label>
+              <input style={s.input} type="number" step="any"
+                value={form.msedcl_units}
+                onChange={e => set('msedcl_units', e.target.value)}
+                placeholder="MSEDCL KWH reading" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>MSEDCL KVAh <span style={{ fontWeight: 400, color: '#888' }}>if separate meter</span></label>
+              <input style={s.input} type="number" step="any"
+                value={form.msedcl_kvah}
+                onChange={e => set('msedcl_kvah', e.target.value)}
+                placeholder="—" />
             </div>
           </div>
         </div>
@@ -230,21 +255,21 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
           </div>
           <div style={s.row3}>
             <div style={s.field}>
-              <label style={s.label}>L12 Voltage (V)</label>
+              <label style={s.label}>L1R Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_l12}
                 onChange={e => set('voltage_l12', e.target.value)}
                 placeholder="e.g. 374.7" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>L23 Voltage (V)</label>
+              <label style={s.label}>L2Y Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_l23}
                 onChange={e => set('voltage_l23', e.target.value)}
                 placeholder="e.g. 373.6" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>L31 Voltage (V)</label>
+              <label style={s.label}>L3B Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_l31}
                 onChange={e => set('voltage_l31', e.target.value)}
@@ -253,21 +278,21 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
           </div>
           <div style={s.row3}>
             <div style={s.field}>
-              <label style={s.label}>Phase 1 Current (A)</label>
+              <label style={s.label}>Phase R Current (A)</label>
               <input style={s.input} type="number"
                 value={form.current_l1}
                 onChange={e => set('current_l1', e.target.value)}
                 placeholder="e.g. 1558" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase 2 Current (A)</label>
+              <label style={s.label}>Phase Y Current (A)</label>
               <input style={s.input} type="number"
                 value={form.current_l2}
                 onChange={e => set('current_l2', e.target.value)}
                 placeholder="e.g. 1688" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Phase 3 Current (A)</label>
+              <label style={s.label}> Phase B Current (A)</label>
               <input style={s.input} type="number"
                 value={form.current_l3}
                 onChange={e => set('current_l3', e.target.value)}

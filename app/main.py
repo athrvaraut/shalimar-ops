@@ -504,133 +504,217 @@ def get_recent_power_reports(
     except Exception as e:
         return []
 
-@app.get("/export/power/{date}")
-def export_power_excel(
-    date: str,
+@app.get("/export/power-monthly/{year}/{month}")
+def export_power_monthly_excel(
+    year: int, month: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    from datetime import datetime
-    report = db.query(models.PowerConsumption).filter(
-        models.PowerConsumption.reading_date == date
-    ).first()
+    import calendar
+    from datetime import datetime, date
+    
+    # Get all power records for this month
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM power_consumption "
+        "WHERE EXTRACT(YEAR FROM reading_date) = :year "
+        "AND EXTRACT(MONTH FROM reading_date) = :month "
+        "ORDER BY reading_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    records = [dict(r) for r in results]
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
 
     bold = Font(bold=True)
-    center = Alignment(horizontal="center", vertical="center")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     thin = Side(style="thin")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     blue_fill = PatternFill("solid", fgColor="BDD7EE")
     yellow_fill = PatternFill("solid", fgColor="FFFF00")
+    light_blue = PatternFill("solid", fgColor="DEEAF1")
 
-    try:
-        d = datetime.strptime(date, "%Y-%m-%d")
-        month_year = d.strftime("%b. -%Y").upper()
-        date_display = d.strftime("%d/%m/%Y")
-    except:
-        month_year = date
-        date_display = date
+    month_name = datetime(year, month, 1).strftime("%b").upper()
+    num_days = calendar.monthrange(year, month)[1]
 
-    # Title
-    ws.merge_cells("A1:D1")
-    ws["A1"] = f"POWER CONSUMPTION DAILY REPORT - {month_year}"
+    # ROW 1: Title
+    days_in_month = len(records) if records else num_days
+    total_cols = days_in_month + 3  # SR + Name + days + TOTAL
+    last_col_letter = openpyxl.utils.get_column_letter(total_cols)
+    ws.merge_cells(f"A1:{last_col_letter}1")
+    ws["A1"] = f"POWER CONSUMPTION DAILY REPORT - {month_name}. -{year}"
     ws["A1"].font = Font(bold=True, size=12)
     ws["A1"].alignment = center
 
-    # Header row
-    headers = ["SR.NO.", "SECTION NAME", f"UNIT (KWH)\n{date_display}", "REMARKS"]
-    for i, h in enumerate(headers, 1):
-        c = ws.cell(row=2, column=i, value=h)
-        c.font = bold; c.fill = blue_fill; c.alignment = Alignment(horizontal="center", wrap_text=True); c.border = border
-    ws.row_dimensions[2].height = 30
+    # ROW 2: DATE header row
+    ws.cell(2, 1, "DATE").font = bold
+    ws.cell(2, 1).fill = blue_fill
+    ws.cell(2, 1).border = border
+    ws.cell(2, 1).alignment = center
+    ws.cell(2, 2).fill = blue_fill
+    ws.cell(2, 2).border = border
 
+    for i, rec in enumerate(records):
+        col = i + 3
+        date_val = rec.get('reading_date')
+        if hasattr(date_val, 'strftime'):
+            date_str = date_val.strftime("%d/%m/%Y")
+        else:
+            date_str = str(date_val)[:10]
+        c = ws.cell(2, col, date_str)
+        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
+
+    # TOTAL column
+    total_col = len(records) + 3
+    ws.cell(2, total_col, "TOTAL").font = bold
+    ws.cell(2, total_col).fill = yellow_fill
+    ws.cell(2, total_col).border = border
+    ws.cell(2, total_col).alignment = center
+
+    # ROW 3: SR.NO. / SECTION NAME / UNIT (KWH) headers
+    ws.cell(3, 1, "SR.NO.").font = bold; ws.cell(3, 1).fill = blue_fill; ws.cell(3, 1).border = border; ws.cell(3, 1).alignment = center
+    ws.cell(3, 2, "SECTION NAME").font = bold; ws.cell(3, 2).fill = blue_fill; ws.cell(3, 2).border = border; ws.cell(3, 2).alignment = center
+    for i in range(len(records) + 1):
+        c = ws.cell(3, i + 3, "UNIT (KWH)")
+        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
+    ws.row_dimensions[3].height = 25
+
+    # Section definitions
     sections = [
-        (1, "SEP", report.sep_units if report else 0),
-        (2, "PREP", report.prep_units if report else 0),
-        (None, "SOLAR", report.solar_units if report else 0),
-        (3, "SILO", report.silo_units if report else 0),
-        (4, "DOC", report.doc_units if report else 0),
-        (5, "D-SILO", report.dsilo_units if report else 0),
-        (6, "ACM/ SOYA CHUNKS", report.acm_units if report else 0),
-        (7, "BOILER", report.boiler_units if report else 0),
-        (8, "CHP", report.chp_units if report else 0),
-        (9, "DM", report.dm_units if report else 0),
-        (None, "UG TANK", report.ug_tank_units if report else 0),
-        (10, "REFINERY", report.refinery_units if report else 0),
-        (11, "ETP/ACID/MVR", report.etp_units if report else 0),
-        (12, "PACKING", report.packing_units if report else 0),
-        (13, "ADMIN", report.admin_units if report else 0),
-        (15, "MISCELLENIOUS", 0),
-        (16, "DG SET UNIT", report.dg_units if report else 0),
+        ("1", "SEP", "sep_units"),
+        ("2", "PREP", "prep_units"),
+        ("", "SOLAR", "solar_units"),
+        ("3", "SILO", "silo_units"),
+        ("4", "DOC", "doc_units"),
+        ("5", "D-SILO", "dsilo_units"),
+        ("", "", None),  # subtotal row
+        ("6", "ACM/ SOYA CHUNKS", "acm_units"),
+        ("7", "BOILER", "boiler_units"),
+        ("8", "CHP", "chp_units"),
+        ("9", "DM", "dm_units"),
+        ("", "UG TANK", "ug_tank_units"),
+        ("", "", None),  # subtotal row
+        ("10", "REFINERY", "refinery_units"),
+        ("11", "ETP/ACID/MVR", "etp_units"),
+        ("12", "PACKING", "packing_units"),
+        ("", "", None),  # subtotal row
+        ("13", "ADMIN", "admin_units"),
+        ("15", "MISCELLENIOUS", None),
+        ("", "", None),  # subtotal row
+        ("16", "DG SET UNIT", "dg_units"),
     ]
 
-    row = 3
-    for sr, name, val in sections:
-        ws.cell(row, 1, sr).border = border
-        ws.cell(row, 1).alignment = center
-        ws.cell(row, 2, name).border = border
-        ws.cell(row, 2).font = bold if sr else Font()
-        c = ws.cell(row, 3, val)
-        c.border = border; c.alignment = center
-        ws.cell(row, 4).border = border
-        row += 1
+    data_rows_start = 4
+    section_row_map = {}  # field -> row number for formula building
 
-    # Totals
-    total = (report.sep_units or 0) + (report.prep_units or 0) + (report.solar_units or 0) + \
-            (report.silo_units or 0) + (report.doc_units or 0) + (report.dsilo_units or 0) + \
-            (report.acm_units or 0) + (report.boiler_units or 0) + (report.chp_units or 0) + \
-            (report.dm_units or 0) + (report.ug_tank_units or 0) + (report.refinery_units or 0) + \
-            (report.etp_units or 0) + (report.packing_units or 0) + (report.admin_units or 0) + \
-            (report.dg_units or 0) if report else 0
-    solar = report.solar_units or 0 if report else 0
+    current_row = data_rows_start
+    for sr, name, field in sections:
+        if field is None and name == "":
+            # Subtotal row - skip for now
+            current_row += 1
+            continue
+        ws.cell(current_row, 1, sr).border = border; ws.cell(current_row, 1).alignment = center
+        ws.cell(current_row, 2, name).font = bold if sr else Font(); ws.cell(current_row, 2).border = border
+        
+        row_total = 0
+        for i, rec in enumerate(records):
+            val = rec.get(field, 0) or 0 if field else 0
+            c = ws.cell(current_row, i + 3, val)
+            c.border = border; c.alignment = center
+            row_total += val
+        
+        # Total column
+        if len(records) > 0:
+            first_data_col = openpyxl.utils.get_column_letter(3)
+            last_data_col = openpyxl.utils.get_column_letter(2 + len(records))
+            ws.cell(current_row, total_col, f"=SUM({first_data_col}{current_row}:{last_data_col}{current_row})")
+        ws.cell(current_row, total_col).border = border
+        ws.cell(current_row, total_col).alignment = center
+        
+        if field:
+            section_row_map[field] = current_row
+        current_row += 1
 
-    ws.cell(row, 2, "TOTAL UNIT WITH SOLAR GEN. UNIT").font = bold
-    ws.cell(row, 3, total).fill = yellow_fill; ws.cell(row, 3).font = Font(bold=True); row+=1
-    ws.cell(row, 2, "TOTAL SECTION UNIT WITHOUT SOLAR UNIT").font = bold
-    ws.cell(row, 3, total - solar).fill = yellow_fill; ws.cell(row, 3).font = Font(bold=True); row+=1
-    ws.cell(row, 2, "MSEDCL UNIT (KWH)").font = bold
-    ws.cell(row, 3, report.msedcl_units if report else 0); row+=1
-    ws.cell(row, 2, "POWER (KVAH)").font = bold
-    ws.cell(row, 3, report.power_kvah if report else 0); row+=1
-    ws.cell(row, 2, "POWER FACTOR").font = bold
-    ws.cell(row, 3, report.power_factor if report else 0); row+=2
+    # Summary rows
+    summary_items = [
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT", True),
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", True),
+        ("MSDCL UNIT (KWH)", False),
+        ("POWER (KVAH)", False),
+        ("POWER FACTOR", False),
+    ]
+
+    for label, is_calc in summary_items:
+        c = ws.cell(current_row, 2, label)
+        c.font = bold
+        for i, rec in enumerate(records):
+            col = i + 3
+            if label == "MSDCL UNIT (KWH)":
+                val = rec.get('msedcl_units', 0) or 0
+            elif label == "POWER (KVAH)":
+                val = rec.get('power_kvah', 0) or 0
+            elif label == "POWER FACTOR":
+                kwh = rec.get('msedcl_units', 0) or 0
+                kvah = rec.get('power_kvah', 0) or 0
+                val = round(kwh / kvah, 4) if kvah and kvah > 0 else 0
+            elif label == "TOTAL UNIT WITH SOLAR GEN. UNIT":
+                val = sum((rec.get(f[2], 0) or 0) for f in sections if f[2] and f[2] != 'None')
+            elif label == "TOTAL SECTION UNIT WITHOUT SOLAR UNIT":
+                val = sum((rec.get(f[2], 0) or 0) for f in sections if f[2] and f[2] != 'solar_units')
+            else:
+                val = 0
+            c2 = ws.cell(current_row, col, val)
+            c2.fill = yellow_fill; c2.font = Font(bold=True); c2.border = border; c2.alignment = center
+        # Total col
+        if label not in ("POWER FACTOR",):
+            fc = openpyxl.utils.get_column_letter(3)
+            lc = openpyxl.utils.get_column_letter(2 + len(records))
+            ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
+        ws.cell(current_row, total_col).fill = yellow_fill
+        ws.cell(current_row, total_col).border = border
+        current_row += 1
 
     # DG/Diesel section
-    ws.merge_cells(f"A{row}:D{row}")
-    ws[f"A{row}"] = "DG SET & DIESEL REPORT"
-    ws[f"A{row}"].font = Font(bold=True); ws[f"A{row}"].fill = blue_fill
-    ws[f"A{row}"].alignment = center; row+=1
-
+    current_row += 1
     dg_headers = ["DATE", "O/P STOCK (Ltr)", "DIESEL RECEIVED", "D.G. CONSUMPTION", "DETAILS", "D.G. UNITS", "C/L STOCK (Ltr)"]
     for i, h in enumerate(dg_headers, 1):
-        if i <= 4:
-            c = ws.cell(row, i, h)
-            c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
-    row+=1
+        c = ws.cell(current_row, i, h)
+        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
+    current_row += 1
 
-    if report:
-        ws.cell(row, 1, date_display)
-        ws.cell(row, 2, report.diesel_opening_stock)
-        ws.cell(row, 3, report.diesel_received)
-        ws.cell(row, 4, report.diesel_consumed)
-        ws.cell(row, 1).border = border; ws.cell(row, 2).border = border
-        ws.cell(row, 3).border = border; ws.cell(row, 4).border = border
+    prev_closing = None
+    for rec in records:
+        date_val = rec.get('reading_date')
+        date_str = date_val.strftime("%d/%m/%Y") if hasattr(date_val, 'strftime') else str(date_val)[:10]
+        opening = rec.get('diesel_opening_stock', 0) or 0
+        received = rec.get('diesel_received', 0) or 0
+        consumed = rec.get('diesel_consumed', 0) or 0
+        dg_units = rec.get('dg_generated_units', 0) or 0
+        closing = opening + received - consumed
+        reason = rec.get('dg_reason', '') or ''
+        
+        row_data = [date_str, opening, received, consumed, reason, dg_units, closing]
+        for i, val in enumerate(row_data, 1):
+            c = ws.cell(current_row, i, val)
+            c.border = border; c.alignment = center
+        current_row += 1
 
+    # Column widths
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 28
-    ws.column_dimensions['C'].width = 16
-    ws.column_dimensions['D'].width = 16
+    ws.column_dimensions['B'].width = 26
+    for i in range(3, len(records) + 4):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 12
 
     buffer = BytesIO()
-    wb.save(buffer); buffer.seek(0)
+    wb.save(buffer)
+    buffer.seek(0)
 
+    filename = f"Power_Consumption_{month_name}_{year}.xlsx"
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=Power_Consumption_{date}.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 @app.get("/export/monthly-coal/{year}/{month}")
