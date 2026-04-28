@@ -74,7 +74,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`
         },
         body: JSON.stringify(payload),
       });
@@ -117,8 +117,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             </div>
             <div style={s.field}>
               <label style={s.label}>Shift *</label>
-              <select style={s.select} value={form.shift}
-                onChange={e => set('shift', e.target.value)}>
+              <select style={s.select} value={form.shift} onChange={e => set('shift', e.target.value)}>
                 <option value="A">Shift A (7AM–3PM)</option>
                 <option value="B">Shift B (3PM–11PM)</option>
                 <option value="C">Shift C (11PM–7AM)</option>

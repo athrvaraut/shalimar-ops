@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 interface Props { token: string; onBack: () => void; }
 
-type Section = 'boiler' | 'coal' | 'power';
+type Section = 'boiler' | 'power';
 
 export default function HistoryPage({ token, onBack }: Props) {
   const [section, setSection] = useState<Section>('boiler');
@@ -13,8 +13,8 @@ export default function HistoryPage({ token, onBack }: Props) {
   const [loading, setLoading] = useState(false);
 
   const API = 'https://shalimar-ops.onrender.com';
-  const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                  'Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const daysInMonth = new Date(year, month, 0).getDate();
 
   useEffect(() => {
@@ -27,12 +27,10 @@ export default function HistoryPage({ token, onBack }: Props) {
     try {
       const endpoint = section === 'boiler'
         ? `/history/boiler?year=${year}&month=${month}`
-        : section === 'coal'
-        ? `/history/coal?year=${year}&month=${month}`
         : `/history/power?year=${year}&month=${month}`;
 
       const res = await fetch(`${API}${endpoint}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
       });
       const d = await res.json();
       setData(Array.isArray(d) ? d : []);
@@ -64,17 +62,12 @@ export default function HistoryPage({ token, onBack }: Props) {
 
       {/* Section tabs */}
       <div style={s.sectionTabs}>
-        {(['boiler','coal','power'] as Section[]).map(sec => (
-          <button
-            key={sec}
-            style={section === sec ? s.sTabActive : s.sTab}
-            onClick={() => setSection(sec)}
-          >
-            {sec === 'boiler' ? '🔥 Boiler Log'
-             : sec === 'coal' ? '🪨 Coal & Steam'
-             : '⚡ Power Log'}
-          </button>
-        ))}
+        <button style={section === 'boiler' ? s.sTabActive : s.sTab} onClick={() => setSection('boiler')}>
+          🔥 Boiler Log
+        </button>
+        <button style={section === 'power' ? s.sTabActive : s.sTab} onClick={() => setSection('power')}>
+          ⚡ Power Log
+        </button>
       </div>
 
       {/* Year + Month selector */}
@@ -88,8 +81,8 @@ export default function HistoryPage({ token, onBack }: Props) {
           {months.map((m, i) => (
             <button
               key={m}
-              style={month === i+1 ? s.monthActive : s.monthBtn}
-              onClick={() => setMonth(i+1)}
+              style={month === i + 1 ? s.monthActive : s.monthBtn}
+              onClick={() => setMonth(i + 1)}
             >{m}</button>
           ))}
         </div>
@@ -97,8 +90,8 @@ export default function HistoryPage({ token, onBack }: Props) {
 
       {/* Calendar day grid */}
       <div style={s.calGrid}>
-        {Array.from({length: daysInMonth}, (_, i) => {
-          const d = `${year}-${String(month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
+        {Array.from({ length: daysInMonth }, (_, i) => {
+          const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
           const hasData = !!byDate[d];
           const isSelected = selectedDate === d;
           return (
@@ -115,7 +108,7 @@ export default function HistoryPage({ token, onBack }: Props) {
               }}
               onClick={() => hasData && setSelectedDate(d)}
             >
-              <div style={{ fontSize: 14 }}>{i+1}</div>
+              <div style={{ fontSize: 14 }}>{i + 1}</div>
               {hasData && (
                 <div style={{ fontSize: 9, marginTop: 2 }}>
                   {byDate[d].length} {section === 'boiler' ? 'entries' : 'record'}
@@ -132,11 +125,28 @@ export default function HistoryPage({ token, onBack }: Props) {
           <div style={s.detailHeader}>
             📋 {selectedDate} — {byDate[selectedDate].length} entries
           </div>
+          {selectedDate && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <button
+                onClick={() => {
+                  const url = section === 'boiler'
+                    ? `https://shalimar-ops.onrender.com/export/daily-boiler/${selectedDate}`
+                    : `https://shalimar-ops.onrender.com/export/power-monthly/${selectedDate.split('-')[0]}/${parseInt(selectedDate.split('-')[1])}`;
+                  fetch(url, { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } })
+                    .then(r => r.blob()).then(blob => {
+                      const a = document.createElement('a');
+                      a.href = window.URL.createObjectURL(blob);
+                      a.download = `${section}_${selectedDate}.xlsx`; a.click();
+                    });
+                }}
+                style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              >
+                📥 Download Excel
+              </button>
+            </div>
+          )}
           {section === 'boiler' && (
             <BoilerDetail entries={byDate[selectedDate]} />
-          )}
-          {section === 'coal' && (
-            <CoalDetail entries={byDate[selectedDate]} />
           )}
           {section === 'power' && (
             <PowerDetail entries={byDate[selectedDate]} />
@@ -156,7 +166,7 @@ export default function HistoryPage({ token, onBack }: Props) {
 }
 
 function BoilerDetail({ entries }: { entries: any[] }) {
-  const shifts = ['A','B','C'];
+  const shifts = ['A', 'B', 'C'];
   return (
     <div>
       {shifts.map(shift => {
@@ -167,7 +177,7 @@ function BoilerDetail({ entries }: { entries: any[] }) {
             <div style={d.shiftTitle}>Shift {shift}</div>
             {shiftEntries.map((e, i) => (
               <div key={i} style={d.entryRow}>
-                <div style={d.timeLabel}>{String(e.log_time).slice(0,5)}</div>
+                <div style={d.timeLabel}>{String(e.log_time).slice(0, 5)}</div>
                 <div style={d.paramGrid}>
                   <Param label="Steam Pr" value={e.steam_pressure} unit="KG/CM" />
                   <Param label="Drum Lvl" value={e.drum_water_level} unit="%" />
@@ -206,7 +216,7 @@ function CoalDetail({ entries }: { entries: any[] }) {
 }
 
 function PowerDetail({ entries }: { entries: any[] }) {
-  const shifts = ['A','B','C'];
+  const shifts = ['A', 'B', 'C'];
   return (
     <div>
       {shifts.map(shift => {

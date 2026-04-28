@@ -28,7 +28,7 @@ export default function HODDashboard({ token, onBack }: {
   const [coalReports, setCoalReports] = useState<any[]>([]);
   const [powerReports, setPowerReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'boiler' | 'coal' | 'power'>('boiler');
+  const [tab, setTab] = useState<'boiler' | 'power'>('boiler');
   const [message] = useState('');
 
   const authHeader = { 'Authorization': `Bearer ${token || localStorage.getItem('token')}` };
@@ -48,8 +48,8 @@ export default function HODDashboard({ token, onBack }: {
     try {
       const res = await fetch(`${API}/daily-report/recent`, { headers: authHeader });
       const data = await res.json();
-      setCoalReports(Array.isArray(data) ? data : []);
-    } catch { setCoalReports([]); }
+      setPowerReports(Array.isArray(data) ? data : []);
+    } catch { setPowerReports([]); }
     finally { setLoading(false); }
   };
 
@@ -65,7 +65,6 @@ export default function HODDashboard({ token, onBack }: {
 
   useEffect(() => {
     if (tab === 'boiler') fetchBoiler();
-    else if (tab === 'coal') fetchCoal();
     else fetchPower();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -82,34 +81,29 @@ export default function HODDashboard({ token, onBack }: {
     } catch { alert('Download failed — check connection'); }
   };
 
-  const downloadMonthlyCoal = () => {
-    const now = new Date();
-    download(
-      `${API}/export/monthly-coal/${now.getFullYear()}/${now.getMonth() + 1}`,
-      `Monthly_Coal_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`
+  const downloadBoilerDailyExcel = async (date: string) => {
+    const res = await fetch(
+      `https://shalimar-ops.onrender.com/export/daily-boiler/${date}`,
+      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
     );
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Boiler_${date}.xlsx`; a.click();
+    window.URL.revokeObjectURL(url);
   };
 
-  const downloadPowerMonthly = async () => {
-    try {
-      const now = new Date();
-      const res = await fetch(
-        `https://shalimar-ops.onrender.com/export/power-monthly/${now.getFullYear()}/${now.getMonth() + 1}`,
-        { headers: authHeader } // <-- I used your existing authHeader variable to make it cleaner!
-      );
-      if (!res.ok) throw new Error("Download failed");
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Power_Report_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to download Excel", error);
-      alert("Failed to download the Power Report.");
-    }
+  const downloadPowerMonthlyExcel = async () => {
+    const now = new Date();
+    const res = await fetch(
+      `https://shalimar-ops.onrender.com/export/power-monthly/${now.getFullYear()}/${now.getMonth() + 1}`,
+      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+    );
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Power_Monthly_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`; a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const today = new Date().toISOString().split('T')[0];
@@ -124,32 +118,23 @@ export default function HODDashboard({ token, onBack }: {
           <div style={s.headerTitle}>HOD Dashboard</div>
           <div style={s.headerSub}>Sonkhamb Plant · Shalimar Nutrients</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' as const }}>
-          <button onClick={() => {
-            if (tab === 'boiler') fetchBoiler();
-            else if (tab === 'coal') fetchCoal();
-            else fetchPower();
-          }} style={s.refreshBtn}>🔄</button>
-
+        <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           {tab === 'boiler' && (
-            <button onClick={() => download(`${API}/export/daily-boiler/${today}`, `Boiler_${today}.xlsx`)}
-              style={s.dlBtn}>📥 Boiler Excel</button>
-          )}
-          {tab === 'coal' && (<>
-            <button onClick={() => {
-              const d = coalReports[0]?.report_date;
-              if (d) download(`${API}/export/daily-boiler/${d}`, `Coal_${d}.xlsx`);
-            }} style={s.dlBtn}>📥 Latest Excel</button>
-            <button onClick={downloadMonthlyCoal} style={{ ...s.dlBtn, background: '#7c3aed' }}>
-              📊 Monthly Report
+            <button
+              onClick={() => downloadBoilerDailyExcel(new Date().toISOString().split('T')[0])}
+              style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+            >
+              📥 Today's Boiler Excel
             </button>
-          </>)}
-          {tab === 'power' && (<>
-            <button onClick={() => {
-              const d = powerReports[0]?.reading_date;
-              if (d) download(`${API}/export/power/${d}`, `Power_${d}.xlsx`);
-            }} style={s.dlBtn}>📥 Latest Excel</button>
-          </>)}
+          )}
+          {tab === 'power' && (
+            <button
+              onClick={downloadPowerMonthlyExcel}
+              style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+            >
+              📊 Monthly Power Excel
+            </button>
+          )}
         </div>
       </div>
 
@@ -157,9 +142,6 @@ export default function HODDashboard({ token, onBack }: {
       <div style={s.tabs}>
         <button style={tab === 'boiler' ? s.tabActive : s.tab} onClick={() => setTab('boiler')}>
           🔥 Boiler Log
-        </button>
-        <button style={tab === 'coal' ? s.tabActive : s.tab} onClick={() => setTab('coal')}>
-          🪨 Coal & Steam
         </button>
         <button style={tab === 'power' ? s.tabActive : s.tab} onClick={() => setTab('power')}>
           ⚡ Power
@@ -213,55 +195,6 @@ export default function HODDashboard({ token, onBack }: {
                   <div style={s.alertBox}>🚨 <strong>Breakdown:</strong> {entry.breakdown_problem}</div>
                 )}
                 {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
-              </div>
-            ))}
-        </div>
-      )}
-
-      {/* ── COAL & STEAM ── */}
-      {tab === 'coal' && (
-        <div style={s.content}>
-          <div style={s.sectionInfo}>
-            🪨 Daily coal consumption & steam production records · Click 📥 Excel on any row to download that day's report
-          </div>
-          {loading ? <div style={s.empty}>Loading...</div>
-            : coalReports.length === 0 ? (
-              <div style={s.empty}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>🪨</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No coal reports yet</div>
-                <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Go to Daily Coal & Steam form and submit a report</div>
-              </div>
-            ) : coalReports.map((r: any) => (
-              <div key={r.id} style={s.card}>
-                <div style={s.cardHeader}>
-                  <div style={s.cardLeft}>
-                    <span style={s.entryId}>📅 {r.report_date}</span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                      background: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#d1fae5' : '#fff0f0',
-                      color: r.cs_ratio && r.cs_ratio >= 5.0 && r.cs_ratio <= 5.6 ? '#059669' : '#dc2626',
-                      border: '1px solid #ccc'
-                    }}>
-                      C/S Ratio: {r.cs_ratio ? Number(r.cs_ratio).toFixed(3) : '—'}
-                      {r.cs_ratio && (r.cs_ratio < 5.0 || r.cs_ratio > 5.6) ? ' ⚠️' : ' ✅'}
-                    </span>
-                  </div>
-                  <button onClick={() => download(`${API}/export/daily-boiler/${r.report_date}`, `Coal_Steam_${r.report_date}.xlsx`)}
-                    style={s.miniBtn}>📥 Excel</button>
-                </div>
-                <div style={s.paramGrid}>
-                  <Param label="Opening Stock" value={r.opening_coal_stock} unit="MT" />
-                  <Param label="Coal Consumed" value={r.total_coal_consumed} unit="MT" />
-                  <Param label="Closing Stock" value={r.closing_stock} unit="MT" />
-                  <Param label="Arrival" value={r.coal_arrival_indian} unit="MT" />
-                  <Param label="SEP Steam" value={r.steam_sep_consumed ? Math.round(r.steam_sep_consumed) : null} unit="KG" />
-                  <Param label="REFL Steam" value={r.steam_refl_consumed ? Math.round(r.steam_refl_consumed) : null} unit="KG" />
-                  <Param label="Total Steam" value={r.total_steam ? Math.round(r.total_steam) : null} unit="KG" />
-                  <Param label="Feed Water" value={r.feed_water_temp} unit="°C" />
-                </div>
-                {r.steam_pressure_ok === false && (
-                  <div style={s.alertBox}>⚠️ Steam pressure problem reported this day</div>
-                )}
               </div>
             ))}
         </div>

@@ -129,17 +129,19 @@ function Dashboard({ role, token, onLogout }: {
   onLogout: () => void
 }) {
   const [page, setPage] = useState<'home' | 'boiler-log' | 'hod-dashboard' | 'coal-steam' | 'power' | 'history'>('home');
+  const authToken = token || localStorage.getItem('token') || '';
+
   if (page === 'boiler-log') {
-    return <BoilerLogForm token={token} onBack={() => setPage('home')} />;
+    return <BoilerLogForm token={authToken} onBack={() => setPage('home')} />;
   }
   if (page === 'hod-dashboard') {
-    return <HODDashboard token={token} onBack={() => setPage('home')} />;
+    return <HODDashboard token={authToken} onBack={() => setPage('home')} />;
   }
   if (page === 'power') {
-    return <PowerConsumptionForm token={token} onBack={() => setPage('home')} />;
+    return <PowerConsumptionForm token={authToken} onBack={() => setPage('home')} />;
   }
   if (page === 'history') {
-    return <HistoryPage token={token!} onBack={() => setPage('home')} />;
+    return <HistoryPage token={authToken} onBack={() => setPage('home')} />;
   }
 
   return (

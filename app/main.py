@@ -309,6 +309,19 @@ def submit_power(
     db.refresh(report)
     return {"message": "Power report submitted", "id": report.id}
 
+@app.get("/power-consumption/today")
+def get_todays_power(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import text
+    from datetime import date
+    today = date.today().isoformat()
+    results = db.execute(text(
+        "SELECT * FROM power_consumption WHERE reading_date::text = :today ORDER BY id ASC"
+    ), {"today": today}).mappings().all()
+    return [dict(r) for r in results]
+
 @app.get("/export/daily-boiler/{date}")
 def export_daily_boiler_excel(
     date: str,
