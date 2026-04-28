@@ -127,7 +127,7 @@ export default function HODDashboard({ token, onBack }: {
               onClick={downloadPowerMonthlyExcel}
               style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
-              📊 Monthly Power Excel
+              📊 Today's Power Excel
             </button>
           )}
         </div>
