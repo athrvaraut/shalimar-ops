@@ -130,7 +130,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               report_date: form.log_date,
               opening_coal_stock: parseFloat(form.coal_opening_stock) || 0,
               // --- CHANGED: Combined into a single Coal Arrival field ---
-              coal_arrival: parseFloat(form.coal_arrival) || 0, 
+              coal_arrival: parseFloat(form.coal_arrival) || 0,
               coal_consumed_sep: parseFloat(form.coal_consumed_sep) || 0,
               coal_consumed_refinery: parseFloat(form.coal_consumed_refinery) || 0,
               coal_thermic: parseFloat(form.coal_thermic) || 0,
@@ -448,7 +448,7 @@ const s: Record<string, React.CSSProperties> = {
   hint: { fontWeight: 400, color: '#999', textTransform: 'none', letterSpacing: 0 },
   input: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' },
   inputWarn: { borderColor: '#ff9800', background: '#fff8f0' },
-  select: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%' },
+  select: {padding: '10px 12px',border: '1.5px solid #e0e0e0',borderRadius: 8,fontSize: 14,outline: 'none',background: '#fff',width: '100%',boxSizing: 'border-box' as const},
   textarea: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, resize: 'vertical', fontFamily: 'inherit' },
   btn: { width: '100%', padding: '15px', background: '#0f3460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
   btnDisabled: { width: '100%', padding: '15px', background: '#aaa', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'not-allowed', marginTop: 8 },

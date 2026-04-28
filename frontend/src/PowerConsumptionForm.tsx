@@ -28,6 +28,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
   const initForm = () => {
     const base: any = {
       shift: 'A',
+      operator_name: '',
       msedcl_kwh: '',
       msedcl_kvah: '',
       reading_date: today(), power_kvah: '', power_factor: '',
@@ -107,9 +108,10 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
       <form onSubmit={handleSubmit} style={s.form}>
 
         {/* Date */}
+      // Find and replace the entire Report Date section:
         <div style={s.section}>
           <div style={s.sectionTitle}>📅 Report Date</div>
-          <div style={s.row2}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <div style={s.field}>
               <label style={s.label}>Date *</label>
               <input style={s.input} type="date" value={form.reading_date}
@@ -117,11 +119,20 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             </div>
             <div style={s.field}>
               <label style={s.label}>Shift *</label>
-              <select style={s.select} value={form.shift} onChange={e => set('shift', e.target.value)}>
+              <select style={s.select} value={form.shift}
+                onChange={e => set('shift', e.target.value)}>
                 <option value="A">Shift A (7AM–3PM)</option>
                 <option value="B">Shift B (3PM–11PM)</option>
                 <option value="C">Shift C (11PM–7AM)</option>
               </select>
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Operator Name *</label>
+              <input style={s.input} type="text"
+                value={form.operator_name}
+                onChange={e => set('operator_name', e.target.value)}
+                placeholder="e.g. Pankaj Bhejraj"
+                required />
             </div>
           </div>
         </div>
@@ -350,6 +361,7 @@ const s: Record<string, React.CSSProperties> = {
   field: { display: 'flex', flexDirection: 'column', gap: 4 },
   label: { fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' },
   input: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' },
+  select: {padding: '10px 12px',border: '1.5px solid #e0e0e0',borderRadius: 8,fontSize: 14,outline: 'none',background: '#fff',width: '100%',boxSizing: 'border-box' as const},
   btn: { width: '100%', padding: '15px', background: '#0f3460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
   btnDisabled: { width: '100%', padding: '15px', background: '#aaa', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, cursor: 'not-allowed', marginTop: 8 },
   errorBox: { background: '#fff0f0', border: '1px solid #ffcccc', color: '#cc0000', padding: '12px 16px', borderRadius: 8, fontSize: 13, marginBottom: 10 },
