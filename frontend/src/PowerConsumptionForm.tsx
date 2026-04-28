@@ -108,7 +108,6 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
       <form onSubmit={handleSubmit} style={s.form}>
 
         {/* Date */}
-      // Find and replace the entire Report Date section:
         <div style={s.section}>
           <div style={s.sectionTitle}>📅 Report Date</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>

@@ -110,7 +110,6 @@ export default function HistoryPage({ token, onBack }: Props) {
         </div>
       </div>
 
-      // Add in the filter bar JSX after the month buttons:
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
         {section === 'boiler' && (
           <button onClick={downloadMonthlyBoilerExcel}
