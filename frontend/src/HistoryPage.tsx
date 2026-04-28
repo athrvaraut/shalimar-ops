@@ -41,6 +41,28 @@ export default function HistoryPage({ token, onBack }: Props) {
     }
   };
 
+  const downloadMonthlyBoilerExcel = async () => {
+    const res = await fetch(
+      `https://shalimar-ops.onrender.com/export/monthly-coal/${year}/${month}`,
+      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+    );
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = window.URL.createObjectURL(blob);
+    a.download = `Boiler_Monthly_${year}_${month}.xlsx`; a.click();
+  };
+
+  const downloadMonthlyPowerExcel = async () => {
+    const res = await fetch(
+      `https://shalimar-ops.onrender.com/export/power-monthly/${year}/${month}`,
+      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+    );
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = window.URL.createObjectURL(blob);
+    a.download = `Power_Monthly_${year}_${month}.xlsx`; a.click();
+  };
+
   // Group data by date
   const byDate: Record<string, any[]> = {};
   data.forEach(item => {
@@ -86,6 +108,22 @@ export default function HistoryPage({ token, onBack }: Props) {
             >{m}</button>
           ))}
         </div>
+      </div>
+
+      // Add in the filter bar JSX after the month buttons:
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        {section === 'boiler' && (
+          <button onClick={downloadMonthlyBoilerExcel}
+            style={{ background: '#0f3460', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+            📊 Monthly Boiler Excel
+          </button>
+        )}
+        {section === 'power' && (
+          <button onClick={downloadMonthlyPowerExcel}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+            📊 Monthly Power Excel
+          </button>
+        )}
       </div>
 
       {/* Calendar day grid */}

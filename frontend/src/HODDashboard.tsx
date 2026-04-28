@@ -13,23 +13,42 @@ interface LogEntry {
   steam_flow_refl: number | null;
   drum_water_level: number | null;
   bed1_top_temp: number | null;
+  bed1_bottom_temp: number | null;
   bed2_top_temp: number | null;
+  bed2_bottom_temp: number | null;
   flue_gas_temp: number | null;
   feed_water_temp: number | null;
+  gag_filter_temp: number | null;
+  coal_feed_bed1_hz: number | null;
+  coal_feed_bed2_hz: number | null;
+  id_fan_damper: number | null;
+  fd_fan1_damper: number | null;
+  fd_fan2_damper: number | null;
+  booster_fan1: number | null;
+  booster_fan2: number | null;
+  fd_pressure: number | null;
+  cbd_ibd_report: string | null;
   breakdown_problem: string | null;
   remarks: string | null;
   status: string;
+  coal_opening_stock?: number | null;
+  coal_consumed_sep?: number | null;
+  coal_consumed_refinery?: number | null;
+  total_coal_consumed?: number | null;
+  closing_stock?: number | null;
+  cs_ratio?: number | null;
 }
 
 export default function HODDashboard({ token, onBack }: {
   token: string; onBack: () => void;
 }) {
   const [boilerEntries, setBoilerEntries] = useState<LogEntry[]>([]);
-  const [coalReports, setCoalReports] = useState<any[]>([]);
   const [powerReports, setPowerReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'boiler' | 'power'>('boiler');
   const [message] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedPowerId, setExpandedPowerId] = useState<number | null>(null);
 
   const authHeader = { 'Authorization': `Bearer ${token || localStorage.getItem('token')}` };
 
@@ -40,16 +59,6 @@ export default function HODDashboard({ token, onBack }: {
       const data = await res.json();
       setBoilerEntries(Array.isArray(data) ? data : []);
     } catch { setBoilerEntries([]); }
-    finally { setLoading(false); }
-  };
-
-  const fetchCoal = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/daily-report/recent`, { headers: authHeader });
-      const data = await res.json();
-      setPowerReports(Array.isArray(data) ? data : []);
-    } catch { setPowerReports([]); }
     finally { setLoading(false); }
   };
 
@@ -69,21 +78,9 @@ export default function HODDashboard({ token, onBack }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  const download = async (url: string, filename: string) => {
-    try {
-      const res = await fetch(url, { headers: authHeader });
-      if (!res.ok) { alert('No data found for this date'); return; }
-      const blob = await res.blob();
-      const a = document.createElement('a');
-      a.href = window.URL.createObjectURL(blob);
-      a.download = filename; a.click();
-      window.URL.revokeObjectURL(a.href);
-    } catch { alert('Download failed — check connection'); }
-  };
-
   const downloadBoilerDailyExcel = async (date: string) => {
     const res = await fetch(
-      `https://shalimar-ops.onrender.com/export/daily-boiler/${date}`,
+      `${API}/export/daily-boiler/${date}`,
       { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
     );
     const blob = await res.blob();
@@ -96,7 +93,7 @@ export default function HODDashboard({ token, onBack }: {
   const downloadPowerMonthlyExcel = async () => {
     const now = new Date();
     const res = await fetch(
-      `https://shalimar-ops.onrender.com/export/power-monthly/${now.getFullYear()}/${now.getMonth() + 1}`,
+      `${API}/export/power-monthly/${now.getFullYear()}/${now.getMonth() + 1}`,
       { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
     );
     const blob = await res.blob();
@@ -105,8 +102,6 @@ export default function HODDashboard({ token, onBack }: {
     a.href = url; a.download = `Power_Monthly_${now.getFullYear()}_${now.getMonth() + 1}.xlsx`; a.click();
     window.URL.revokeObjectURL(url);
   };
-
-  const today = new Date().toISOString().split('T')[0];
 
   return (
     <div style={s.page}>
@@ -165,36 +160,63 @@ export default function HODDashboard({ token, onBack }: {
               </div>
             ) : boilerEntries.map(entry => (
               <div key={entry.id} style={s.card}>
-                <div style={s.cardHeader}>
+                <div style={{ ...s.cardHeader, cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
                   <div style={s.cardLeft}>
-                    <span style={s.entryId}>#{entry.id}</span>
-                    <span style={s.shiftBadge}>Shift {entry.shift}</span>
-                    <span style={s.dateText}>{String(entry.log_time).slice(0, 5)}</span>
-                    {entry.operator_name && (
-                      <span style={{ fontSize: 12, color: '#555' }}>👤 {entry.operator_name}</span>
+                    <span style={s.entryId}>Entry #{entry.id}</span>
+                    <span style={{ ...s.shiftBadge }}>Shift {entry.shift}</span>
+                    <span style={s.dateText}>{entry.log_date} · {String(entry.log_time).slice(0, 5)}</span>
+                    {entry.operator_name && <span style={{ fontSize: 12, color: '#666' }}>👤 {entry.operator_name}</span>}
+                  </div>
+                  <span style={{ fontSize: 12, color: '#888' }}>{expandedId === entry.id ? '▲ Hide' : '▼ Show All'}</span>
+                </div>
+
+                {expandedId === entry.id && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={s.paramGrid}>
+                      <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM" />
+                      <Param label="Steam Flow SEP" value={entry.steam_flow_sep} unit="KG" />
+                      <Param label="Steam Flow REFL" value={entry.steam_flow_refl} unit="KG" />
+                      <Param label="Drum Water Level" value={entry.drum_water_level} unit="%" />
+                      <Param label="Feed Water Temp" value={entry.feed_water_temp} unit="°C" />
+                      <Param label="Bed 1 Top" value={entry.bed1_top_temp} unit="°C" />
+                      <Param label="Bed 1 Bottom" value={entry.bed1_bottom_temp} unit="°C" />
+                      <Param label="Bed 2 Top" value={entry.bed2_top_temp} unit="°C" />
+                      <Param label="Bed 2 Bottom" value={entry.bed2_bottom_temp} unit="°C" />
+                      <Param label="Flue Gas Temp" value={entry.flue_gas_temp} unit="°C" />
+                      <Param label="GAG Filter Temp" value={entry.gag_filter_temp} unit="°C" />
+                      <Param label="Coal Feed Bed1" value={entry.coal_feed_bed1_hz} unit="HZ" />
+                      <Param label="Coal Feed Bed2" value={entry.coal_feed_bed2_hz} unit="HZ" />
+                      <Param label="ID Fan Damper" value={entry.id_fan_damper} unit="%" />
+                      <Param label="FD Fan 1" value={entry.fd_fan1_damper} unit="%" />
+                      <Param label="FD Fan 2" value={entry.fd_fan2_damper} unit="%" />
+                      <Param label="Booster Fan 1" value={entry.booster_fan1} unit="%" />
+                      <Param label="Booster Fan 2" value={entry.booster_fan2} unit="%" />
+                      <Param label="FD Pressure" value={entry.fd_pressure} unit="MM/WC" />
+                    </div>
+                    {entry.cbd_ibd_report && <div style={s.remarksBox}>📋 CBD/IBD: {entry.cbd_ibd_report}</div>}
+                    {entry.breakdown_problem && <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>}
+                    {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
+
+                    {/* Coal & Steam if filled */}
+                    {entry.coal_opening_stock && (
+                      <div style={{ marginTop: 10, background: '#f0f9ff', borderRadius: 8, padding: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#0f3460', marginBottom: 8 }}>🪨 Coal & Steam</div>
+                        <div style={s.paramGrid}>
+                          <Param label="Opening Stock" value={entry.coal_opening_stock} unit="MT" />
+                          <Param label="Consumed SEP" value={entry.coal_consumed_sep} unit="MT" />
+                          <Param label="Consumed REFL" value={entry.coal_consumed_refinery} unit="MT" />
+                          <Param label="Total Coal" value={entry.total_coal_consumed} unit="MT" />
+                          <Param label="Closing Stock" value={entry.closing_stock} unit="MT" />
+                          <Param label="C/S Ratio" value={entry.cs_ratio} unit="" />
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <button onClick={() => download(`${API}/export/daily-boiler/${entry.log_date}`, `Boiler_${entry.log_date}.xlsx`)}
-                    style={s.miniBtn}>📥 Excel</button>
-                </div>
-
-                <div style={s.paramGrid}>
-                  <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM"
-                    warn={entry.steam_pressure !== null && (entry.steam_pressure < 8 || entry.steam_pressure > 12.5)} />
-                  <Param label="Flow SEP" value={entry.steam_flow_sep} unit="KG" />
-                  <Param label="Flow REFL" value={entry.steam_flow_refl} unit="KG" />
-                  <Param label="Drum Level" value={entry.drum_water_level} unit="%" />
-                  <Param label="Bed 1 Top" value={entry.bed1_top_temp} unit="°C" />
-                  <Param label="Bed 2 Top" value={entry.bed2_top_temp} unit="°C" />
-                  <Param label="Flue Gas" value={entry.flue_gas_temp} unit="°C"
-                    warn={entry.flue_gas_temp !== null && entry.flue_gas_temp > 220} />
-                  <Param label="Feed Water" value={entry.feed_water_temp} unit="°C" />
-                </div>
-
-                {entry.breakdown_problem && (
-                  <div style={s.alertBox}>🚨 <strong>Breakdown:</strong> {entry.breakdown_problem}</div>
                 )}
-                {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
+
+                {entry.breakdown_problem && !expandedId && (
+                  <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>
+                )}
               </div>
             ))}
         </div>
@@ -203,53 +225,44 @@ export default function HODDashboard({ token, onBack }: {
       {/* ── POWER ── */}
       {tab === 'power' && (
         <div style={s.content}>
-          <div style={s.sectionInfo}>
-            ⚡ Daily power consumption per section · Click 📥 Excel on any row to download that day's report
-          </div>
           {loading ? <div style={s.empty}>Loading...</div>
-            : powerReports.length === 0 ? (
-              <div style={s.empty}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>⚡</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No power reports yet</div>
-                <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Go to Power Consumption form and submit a report</div>
-              </div>
-            ) : powerReports.map((r: any) => {
-              const total = (r.sep_units || 0) + (r.prep_units || 0) + (r.solar_units || 0) + (r.silo_units || 0) +
-                (r.doc_units || 0) + (r.dsilo_units || 0) + (r.acm_units || 0) + (r.boiler_units || 0) +
-                (r.chp_units || 0) + (r.dm_units || 0) + (r.ug_tank_units || 0) + (r.refinery_units || 0) +
-                (r.etp_units || 0) + (r.packing_units || 0) + (r.admin_units || 0) + (r.dg_units || 0);
-              const solarPct = total > 0 ? ((r.solar_units || 0) / total * 100).toFixed(1) : '0';
-              return (
+            : powerReports.length === 0 ? <div style={s.empty}>No power reports found</div>
+              : powerReports.map((r: any) => (
                 <div key={r.id} style={s.card}>
-                  <div style={s.cardHeader}>
-                    <div style={s.cardLeft}>
-                      <span style={s.entryId}>📅 {r.reading_date}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
-                        Total: {total.toFixed(0)} KWH
-                      </span>
-                      {r.solar_units > 0 && (
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', color: '#059669', border: '1px solid #86efac' }}>
-                          ☀️ Solar: {r.solar_units} KWH ({solarPct}%)
-                        </span>
-                      )}
-                    </div>
-                    <button onClick={() => download(`${API}/export/power/${r.reading_date}`, `Power_${r.reading_date}.xlsx`)}
-                      style={s.miniBtn}>📥 Excel</button>
+                  <div style={{ ...s.cardHeader, cursor: 'pointer' }}
+                    onClick={() => setExpandedPowerId(expandedPowerId === r.id ? null : r.id)}>
+                    <span style={s.entryId}>📅 {r.reading_date} — Shift {r.shift || 'A'}</span>
+                    <span style={{ fontSize: 12, color: '#888' }}>{expandedPowerId === r.id ? '▲ Hide' : '▼ All Params'}</span>
                   </div>
+
                   <div style={s.paramGrid}>
-                    <Param label="SEP" value={r.sep_units} unit="KWH" />
-                    <Param label="PREP" value={r.prep_units} unit="KWH" />
+                    <Param label="Total KWH" value={
+                      (r.sep_units || 0) + (r.prep_units || 0) + (r.solar_units || 0) + (r.boiler_units || 0) +
+                      (r.refinery_units || 0) + (r.etp_units || 0) + (r.packing_units || 0) + (r.admin_units || 0)
+                    } unit="KWH" />
                     <Param label="Solar" value={r.solar_units} unit="KWH" />
-                    <Param label="Boiler" value={r.boiler_units} unit="KWH" />
-                    <Param label="Refinery" value={r.refinery_units} unit="KWH" />
-                    <Param label="ETP" value={r.etp_units} unit="KWH" />
                     <Param label="MSEDCL" value={r.msedcl_units} unit="KWH" />
                     <Param label="Power Factor" value={r.power_factor} unit="" />
                   </div>
-                  {r.dg_reason && <div style={s.remarksBox}>🛢️ DG: {r.dg_reason}</div>}
+
+                  {expandedPowerId === r.id && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8 }}>
+                        {[['SEP', 'sep_units'], ['PREP', 'prep_units'], ['Solar', 'solar_units'], ['Silo', 'silo_units'],
+                        ['DOC', 'doc_units'], ['D-Silo', 'dsilo_units'], ['ACM', 'acm_units'], ['Boiler', 'boiler_units'],
+                        ['CHP', 'chp_units'], ['DM Plant', 'dm_units'], ['UG Tank', 'ug_tank_units'], ['Refinery', 'refinery_units'],
+                        ['ETP', 'etp_units'], ['Packing', 'packing_units'], ['Admin', 'admin_units'], ['DG Set', 'dg_units'],
+                        ['MSEDCL', 'msedcl_units']].map(([label, key]) => (
+                          <Param key={key} label={label} value={r[key]} unit="KWH" />
+                        ))}
+                        <Param label="kVAh" value={r.power_kvah} unit="" />
+                        <Param label="Power Factor" value={r.power_factor} unit="" />
+                      </div>
+                      {r.dg_reason && <div style={s.remarksBox}>🛢️ DG: {r.dg_reason}</div>}
+                    </div>
+                  )}
                 </div>
-              );
-            })}
+              ))}
         </div>
       )}
 
@@ -258,7 +271,7 @@ export default function HODDashboard({ token, onBack }: {
 }
 
 function Param({ label, value, unit, warn }: {
-  label: string; value: number | null; unit: string; warn?: boolean;
+  label: string; value: number | null | undefined; unit: string; warn?: boolean;
 }) {
   return (
     <div style={{ ...s.param, ...(warn ? s.paramWarn : {}) }}>
@@ -299,6 +312,6 @@ const s: Record<string, React.CSSProperties> = {
   paramWarn: { background: '#fff8f0', border: '1px solid #fed7aa' },
   paramLabel: { fontSize: 10, color: '#888', marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
   paramValue: { fontSize: 13, fontWeight: 600 },
-  alertBox: { background: '#fff0f0', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 8 },
+  breakdownAlert: { background: '#fff0f0', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 8 },
   remarksBox: { background: '#f8f9fa', padding: '8px 12px', borderRadius: 8, fontSize: 13, color: '#555', marginTop: 8 },
 };

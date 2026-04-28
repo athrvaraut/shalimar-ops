@@ -21,14 +21,13 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://shalimar-ops-slxa.vercel.app",  # ← ADD THIS
-        "https://*.vercel.app",                   # ← ADD THIS
+        "https://shalimar-ops-slxa.vercel.app",
+        "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ─── AUTH ────────────────────────────────────────────────
 
@@ -81,6 +80,18 @@ def submit_boiler_log(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.require_role("operator", "assistant", "hod"))
 ):
+    # Check duplicate
+    existing = db.query(models.BoilerLogEntry).filter(
+        models.BoilerLogEntry.shift == entry.shift,
+        models.BoilerLogEntry.log_date == str(entry.log_date),
+        models.BoilerLogEntry.log_time == str(entry.log_time)
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": f"Entry already exists for Shift {entry.shift} at {entry.log_time}", "existing_id": existing.id}
+        )
     # Validation — flag if out of safe range
     warnings = []
     if entry.steam_pressure and not (6 <= entry.steam_pressure <= 12):
@@ -125,6 +136,22 @@ def submit_boiler_log(
     db.refresh(log)
     return log
 
+@app.put("/boiler-log/{log_id}/update")
+def update_boiler_log(
+    log_id: int,
+    entry: schemas.BoilerLogCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role("operator", "assistant", "hod"))
+):
+    log = db.query(models.BoilerLogEntry).filter(models.BoilerLogEntry.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    for field, value in entry.dict().items():
+        setattr(log, field, value)
+    db.commit()
+    db.refresh(log)
+    return log
+
 @app.get("/boiler-log/today")
 def get_todays_logs(
     db: Session = Depends(get_db),
@@ -133,7 +160,7 @@ def get_todays_logs(
     today = datetime.now().strftime("%Y-%m-%d")
     logs = db.query(models.BoilerLogEntry).filter(
         models.BoilerLogEntry.log_date == today
-    ).all()
+    ).order_by(models.BoilerLogEntry.id.desc()).limit(20).all()
     return logs
 
 @app.get("/boiler-log/pending")
@@ -262,6 +289,7 @@ def get_daily_report(
     if not report:
         raise HTTPException(status_code=404, detail="No report found for this date")
     return report
+
 @app.post("/power-consumption")
 def submit_power(
     data: schemas.PowerConsumptionCreate,
@@ -296,7 +324,7 @@ def submit_power(
         dg_generated_units=data.dg_generated_units,
         dg_reason=data.dg_reason,
         
-        # 👇 PASTE THE NEW VOLTAGE FIELDS HERE 👇
+        # 👇 NEW VOLTAGE FIELDS 👇
         voltage_r_morning=data.voltage_r_morning,
         voltage_y_morning=data.voltage_y_morning,
         voltage_b_morning=data.voltage_b_morning,
@@ -478,7 +506,7 @@ def export_daily_boiler_excel(
     ws.append([])
     ws.append([])
     for _ in range(4):
-       ws.append([])
+        ws.append([])
     footer_row = ws.max_row
     ws.cell(footer_row, 2).value = f"Generated: {date}  |  HOD: {current_user.name}  |  Shalimar Plant Ops System"
     ws.cell(footer_row, 2).font = Font(italic=True, color="888888", size=9)
@@ -492,6 +520,7 @@ def export_daily_boiler_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=Daily_Boiler_Report_{date}.xlsx"}
     )
+
 @app.get("/daily-report/recent")
 def get_recent_coal_reports(
     db: Session = Depends(get_db),
@@ -588,303 +617,160 @@ def export_power_monthly_excel(
     # ROW 3: SR.NO. / SECTION NAME / UNIT (KWH) headers
     ws.cell(3, 1, "SR.NO.").font = bold; ws.cell(3, 1).fill = blue_fill; ws.cell(3, 1).border = border; ws.cell(3, 1).alignment = center
     ws.cell(3, 2, "SECTION NAME").font = bold; ws.cell(3, 2).fill = blue_fill; ws.cell(3, 2).border = border; ws.cell(3, 2).alignment = center
-    for i in range(len(records) + 1):
-        c = ws.cell(3, i + 3, "UNIT (KWH)")
-        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
-    ws.row_dimensions[3].height = 25
+    
+    for i in range(len(records)):
+        col = i + 3
+        ws.cell(3, col, "UNIT (KWH)").font = bold
+        ws.cell(3, col).fill = blue_fill
+        ws.cell(3, col).border = border
+        ws.cell(3, col).alignment = center
 
-    # Section definitions
-    sections = [
-        ("1", "SEP", "sep_units"),
-        ("2", "PREP", "prep_units"),
-        ("", "SOLAR", "solar_units"),
-        ("3", "SILO", "silo_units"),
-        ("4", "DOC", "doc_units"),
-        ("5", "D-SILO", "dsilo_units"),
-        ("", "", None),  # subtotal row
-        ("6", "ACM/ SOYA CHUNKS", "acm_units"),
-        ("7", "BOILER", "boiler_units"),
-        ("8", "CHP", "chp_units"),
-        ("9", "DM", "dm_units"),
-        ("", "UG TANK", "ug_tank_units"),
-        ("", "", None),  # subtotal row
-        ("10", "REFINERY", "refinery_units"),
-        ("11", "ETP/ACID/MVR", "etp_units"),
-        ("12", "PACKING", "packing_units"),
-        ("", "", None),  # subtotal row
-        ("13", "ADMIN", "admin_units"),
-        ("15", "MISCELLENIOUS", None),
-        ("", "", None),  # subtotal row
-        ("16", "DG SET UNIT", "dg_units"),
+    ws.cell(3, total_col, "TOTAL").font = bold
+    ws.cell(3, total_col).fill = yellow_fill
+    ws.cell(3, total_col).border = border
+    ws.cell(3, total_col).alignment = center
+
+    # Data rows start
+    data_rows_start = 4
+
+    # Section groups with subtotals
+    SECTION_GROUPS = [
+        ("1", "SEP", "sep_units", False),
+        ("2", "PREP", "prep_units", False),
+        ("3", "SOLAR", "solar_units", False),
+        ("", "", None, True),   # subtotal row 1
+        ("4", "SILO", "silo_units", False),
+        ("5", "DOC", "doc_units", False),
+        ("6", "D-SILO", "dsilo_units", False),
+        ("7", "ACM", "acm_units", False),
+        ("", "", None, True),   # subtotal row 2
+        ("8", "BOILER", "boiler_units", False),
+        ("9", "CHP", "chp_units", False),
+        ("10", "DM PLANT", "dm_units", False),
+        ("11", "UG TANK", "ug_tank_units", False),
+        ("12", "REFINERY", "refinery_units", False),
+        ("13", "ETP", "etp_units", False),
+        ("14", "PACKING", "packing_units", False),
+        ("15", "MISCELLENIOUS", None, False),
+        ("", "", None, True),   # subtotal row 4
+        ("16", "DG SET UNIT", "dg_units", False),
     ]
 
-    data_rows_start = 4
-    section_row_map = {}  # field -> row number for formula building
-
+    # Track group subtotal rows for formula ranges
+    group_data_rows = []  # (start_row, end_row) for each group
+    current_group_start = data_rows_start
     current_row = data_rows_start
-    for sr, name, field in sections:
-        if field is None and name == "":
-            # Subtotal row - skip for now
+
+    for sr, name, field, is_subtotal in SECTION_GROUPS:
+        if is_subtotal:
+            # Add subtotal row
+            grp_start = openpyxl.utils.get_column_letter(3)
+            grp_end = openpyxl.utils.get_column_letter(2 + len(records))
+            # SR and name cells
+            ws.cell(current_row, 1).border = border
+            ws.cell(current_row, 2).border = border
+            for i, rec in enumerate(records):
+                col = i + 3
+                # Sum from group start to current row - 1
+                ws.cell(current_row, col, f"=SUM({openpyxl.utils.get_column_letter(col)}{current_group_start}:{openpyxl.utils.get_column_letter(col)}{current_row-1})")
+                ws.cell(current_row, col).fill = light_blue
+                ws.cell(current_row, col).font = Font(bold=True)
+                ws.cell(current_row, col).border = border
+                ws.cell(current_row, col).alignment = center
+            # Total col formula
+            ws.cell(current_row, total_col, f"=SUM({openpyxl.utils.get_column_letter(3)}{current_row}:{openpyxl.utils.get_column_letter(2+len(records))}{current_row})")
+            ws.cell(current_row, total_col).fill = light_blue
+            ws.cell(current_row, total_col).font = Font(bold=True)
+            ws.cell(current_row, total_col).border = border
+            current_group_start = current_row + 1
             current_row += 1
             continue
-        ws.cell(current_row, 1, sr).border = border; ws.cell(current_row, 1).alignment = center
-        ws.cell(current_row, 2, name).font = bold if sr else Font(); ws.cell(current_row, 2).border = border
-        
-        row_total = 0
+
+        # Normal section row
+        ws.cell(current_row, 1, sr).border = border
+        ws.cell(current_row, 1).alignment = center
+        ws.cell(current_row, 2, name).border = border
+        ws.cell(current_row, 2).font = Font(bold=True) if sr else Font()
+
         for i, rec in enumerate(records):
             val = rec.get(field, 0) or 0 if field else 0
             c = ws.cell(current_row, i + 3, val)
-            c.border = border; c.alignment = center
-            row_total += val
-        
+            c.border = border
+            c.alignment = center
+
         # Total column
-        if len(records) > 0:
-            first_data_col = openpyxl.utils.get_column_letter(3)
-            last_data_col = openpyxl.utils.get_column_letter(2 + len(records))
-            ws.cell(current_row, total_col, f"=SUM({first_data_col}{current_row}:{last_data_col}{current_row})")
+        fc = openpyxl.utils.get_column_letter(3)
+        lc = openpyxl.utils.get_column_letter(2 + len(records))
+        ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
         ws.cell(current_row, total_col).border = border
         ws.cell(current_row, total_col).alignment = center
-        
-        if field:
-            section_row_map[field] = current_row
         current_row += 1
 
-    # Summary rows
-    summary_items = [
-        ("TOTAL UNIT WITH SOLAR GEN. UNIT", True),
-        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", True),
-        ("MSDCL UNIT (KWH)", False),
-        ("POWER (KVAH)", False),
-        ("POWER FACTOR", False),
+    # Summary rows — with borders and yellow fill
+    summary_rows = [
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT", "total_with_solar"),
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar"),
+        ("MSDCL UNIT (KWH)", "msedcl"),
+        ("POWER (KVAH)", "kvah"),
+        ("POWER FACTOR", "pf"),
     ]
 
-    for label, is_calc in summary_items:
-        c = ws.cell(current_row, 2, label)
-        c.font = bold
+    for label, key in summary_rows:
+        c2 = ws.cell(current_row, 2, label)
+        c2.font = Font(bold=True)
+        c2.border = border
+        ws.cell(current_row, 1).border = border  # ADD BORDER to col A too!
+        
         for i, rec in enumerate(records):
             col = i + 3
-            if label == "MSDCL UNIT (KWH)":
+            if key == "total_with_solar":
+                val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3])
+            elif key == "total_without_solar":
+                val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3] and f[2] != 'solar_units')
+            elif key == "msedcl":
                 val = rec.get('msedcl_units', 0) or 0
-            elif label == "POWER (KVAH)":
+            elif key == "kvah":
                 val = rec.get('power_kvah', 0) or 0
-            elif label == "POWER FACTOR":
+            elif key == "pf":
                 kwh = rec.get('msedcl_units', 0) or 0
                 kvah = rec.get('power_kvah', 0) or 0
-                val = round(kwh / kvah, 4) if kvah and kvah > 0 else 0
-            elif label == "TOTAL UNIT WITH SOLAR GEN. UNIT":
-                val = sum((rec.get(f[2], 0) or 0) for f in sections if f[2] and f[2] != 'None')
-            elif label == "TOTAL SECTION UNIT WITHOUT SOLAR UNIT":
-                val = sum((rec.get(f[2], 0) or 0) for f in sections if f[2] and f[2] != 'solar_units')
+                val = round(kwh/kvah, 4) if kvah and kvah > 0 else 0
             else:
                 val = 0
-            c2 = ws.cell(current_row, col, val)
-            c2.fill = yellow_fill; c2.font = Font(bold=True); c2.border = border; c2.alignment = center
-        # Total col
-        if label not in ("POWER FACTOR",):
-            fc = openpyxl.utils.get_column_letter(3)
-            lc = openpyxl.utils.get_column_letter(2 + len(records))
-            ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
-        ws.cell(current_row, total_col).fill = yellow_fill
-        ws.cell(current_row, total_col).border = border
-        current_row += 1
-
-    # DG/Diesel section
-    current_row += 1
-    dg_headers = ["DATE", "O/P STOCK (Ltr)", "DIESEL RECEIVED", "D.G. CONSUMPTION", "DETAILS", "D.G. UNITS", "C/L STOCK (Ltr)"]
-    for i, h in enumerate(dg_headers, 1):
-        c = ws.cell(current_row, i, h)
-        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
-    current_row += 1
-
-    prev_closing = None
-    for rec in records:
-        date_val = rec.get('reading_date')
-        date_str = date_val.strftime("%d/%m/%Y") if hasattr(date_val, 'strftime') else str(date_val)[:10]
-        opening = rec.get('diesel_opening_stock', 0) or 0
-        received = rec.get('diesel_received', 0) or 0
-        consumed = rec.get('diesel_consumed', 0) or 0
-        dg_units = rec.get('dg_generated_units', 0) or 0
-        closing = opening + received - consumed
-        reason = rec.get('dg_reason', '') or ''
+            
+            c3 = ws.cell(current_row, col, val)
+            c3.fill = yellow_fill
+            c3.font = Font(bold=True)
+            c3.border = border
+            c3.alignment = center
         
-        row_data = [date_str, opening, received, consumed, reason, dg_units, closing]
-        for i, val in enumerate(row_data, 1):
-            c = ws.cell(current_row, i, val)
-            c.border = border; c.alignment = center
+        # Total column
+        if key not in ("pf",):
+            ws.cell(current_row, total_col, f"=SUM({openpyxl.utils.get_column_letter(3)}{current_row}:{openpyxl.utils.get_column_letter(2+len(records))}{current_row})")
+        ws.cell(current_row, total_col).fill = yellow_fill
+        ws.cell(current_row, total_col).font = Font(bold=True)
+        ws.cell(current_row, total_col).border = border
         current_row += 1
 
     # Column widths
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 26
-    for i in range(3, len(records) + 4):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 12
+    ws.column_dimensions['B'].width = 25
+    for i in range(len(records)):
+        col_letter = openpyxl.utils.get_column_letter(i + 3)
+        ws.column_dimensions[col_letter].width = 14
+    ws.column_dimensions[openpyxl.utils.get_column_letter(total_col)].width = 14
+
+    # Row heights
+    ws.row_dimensions[1].height = 25
+    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[3].height = 30
 
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
-    filename = f"Power_Consumption_{month_name}_{year}.xlsx"
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename=Power_Monthly_Report_{year}_{month}.xlsx"}
     )
-
-@app.get("/export/monthly-coal/{year}/{month}")
-def export_monthly_coal_excel(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    import calendar
-    from datetime import date, datetime
-
-    month_name = datetime(year, month, 1).strftime("%b").upper()
-    reports = db.query(models.DailyCoalSteam).filter(
-        models.DailyCoalSteam.report_date >= f"{year}-{month:02d}-01",
-        models.DailyCoalSteam.report_date <= f"{year}-{month:02d}-{calendar.monthrange(year,month)[1]}"
-    ).order_by(models.DailyCoalSteam.report_date).all()
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-
-    bold = Font(bold=True)
-    center = Alignment(horizontal="center", vertical="center")
-    thin = Side(style="thin")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    blue_fill = PatternFill("solid", fgColor="BDD7EE")
-    yellow_fill = PatternFill("solid", fgColor="FFFF00")
-
-    # Header rows exactly matching father's file
-    ws["A1"] = "SHALIMAR NUTRIENTS PRIVATE LIMITED"
-    ws["A1"].font = Font(bold=True, size=13)
-    ws["A2"] = "BOILER SECTION"
-    ws["A2"].font = bold
-    ws["A3"] = f"COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}"
-    ws["A3"].font = Font(bold=True, size=11)
-    ws.merge_cells("A3:O3")
-    ws["A3"].alignment = center
-
-    # Column headers exactly matching father's file
-    col_headers = [
-        "DATE", "OPENING STOCK OF COAL IN MT", "ARRIVAL COAL IN MT",
-        "COAL CONSUMPTION IN MT (SEP)", "CLOSING STOCK",
-        "COAL CONSUMPTION IN MT (REF.)", "TOTAL COAL FOR STEAM PRODUCTION",
-        "COAL CONSUMPTION IN THERMIC BOILER IN MT",
-        "COAL CONSUMPTION IN MT (TOTAL)", "CLOSING STOCK IN MT",
-        "STEAM PRODUCTION IN KG (SEP)", "STEAM PRODUCTION IN KG (REF.)",
-        "TOTAL STEAM PRODUCTION IN KG", "C/S RATIO", "FEED WATER TEMP (°C)"
-    ]
-
-    for i, h in enumerate(col_headers, 1):
-        c = ws.cell(4, i, h)
-        c.font = bold; c.fill = blue_fill
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border = border
-    ws.row_dimensions[4].height = 50
-
-    # Data rows
-    total_coal_sum = 0; total_steam_sum = 0
-    for r in reports:
-        row_num = ws.max_row + 1
-        date_val = r.report_date
-        total_coal = r.total_coal_consumed or 0
-        total_steam = r.total_steam or 0
-        total_coal_sum += total_coal; total_steam_sum += total_steam
-
-        row_data = [
-            date_val, r.opening_coal_stock,
-            (r.coal_arrival_indian or 0) + (r.coal_arrival_imported or 0),
-            r.coal_consumed_sep, r.closing_stock,
-            r.coal_consumed_refinery,
-            (r.coal_consumed_sep or 0) + (r.coal_consumed_refinery or 0),
-            r.coal_thermic, total_coal, r.closing_stock,
-            r.steam_sep_consumed, r.steam_refl_consumed,
-            total_steam, r.cs_ratio, r.feed_water_temp
-        ]
-        for i, val in enumerate(row_data, 1):
-            c = ws.cell(row_num, i, val)
-            c.border = border; c.alignment = center
-            # Highlight C/S ratio
-            if i == 14 and val:
-                if 5.0 <= float(val) <= 5.6:
-                    c.fill = PatternFill("solid", fgColor="E2EFDA")
-                else:
-                    c.fill = PatternFill("solid", fgColor="FADBD8")
-
-    # Totals row
-    total_row = ws.max_row + 1
-    ws.cell(total_row, 1, "TOTAL").font = Font(bold=True)
-    ws.cell(total_row, 9, round(total_coal_sum, 3)).font = Font(bold=True)
-    ws.cell(total_row, 9).fill = yellow_fill
-    ws.cell(total_row, 13, total_steam_sum).font = Font(bold=True)
-    ws.cell(total_row, 13).fill = yellow_fill
-    avg_cs = round(total_steam_sum / total_coal_sum, 3) if total_coal_sum > 0 else 0
-    ws.cell(total_row, 14, avg_cs).font = Font(bold=True)
-    ws.cell(total_row, 14).fill = yellow_fill
-
-    # Column widths
-    widths = [12, 18, 14, 18, 14, 18, 18, 18, 16, 14, 16, 16, 16, 12, 14]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
-
-    buffer = BytesIO()
-    wb.save(buffer); buffer.seek(0)
-
-    return StreamingResponse(
-        buffer,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=Coal_Steam_{month_name}_{year}.xlsx"}
-    )
-
-@app.get("/history/boiler")
-def history_boiler(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    from sqlalchemy import text, extract
-    results = db.execute(text(
-        "SELECT * FROM boiler_log_entries "
-        "WHERE EXTRACT(YEAR FROM log_date) = :year "
-        "AND EXTRACT(MONTH FROM log_date) = :month "
-        "ORDER BY log_date ASC, log_time ASC"
-    ), {"year": year, "month": month}).mappings().all()
-    return [dict(r) for r in results]
-
-@app.get("/history/coal")
-def history_coal(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    from sqlalchemy import text
-    results = db.execute(text(
-        "SELECT * FROM daily_coal_steam "
-        "WHERE EXTRACT(YEAR FROM report_date) = :year "
-        "AND EXTRACT(MONTH FROM report_date) = :month "
-        "ORDER BY report_date ASC"
-    ), {"year": year, "month": month}).mappings().all()
-    return [dict(r) for r in results]
-
-@app.get("/history/power")
-def history_power(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
-    from sqlalchemy import text
-    results = db.execute(text(
-        "SELECT * FROM power_consumption "
-        "WHERE EXTRACT(YEAR FROM reading_date) = :year "
-        "AND EXTRACT(MONTH FROM reading_date) = :month "
-        "ORDER BY reading_date ASC"
-    ), {"year": year, "month": month}).mappings().all()
-    return [dict(r) for r in results]
-
-# ─── HEALTH CHECK ─────────────────────────────────────────
-
-@app.get("/")
-def root():
-    return {"status": "Shalimar Plant Ops API is running", "version": "1.0.0"}

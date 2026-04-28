@@ -1,6 +1,6 @@
 import PowerConsumptionForm from './PowerConsumptionForm';
 import HODDashboard from './HODDashboard';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import BoilerLogForm from './BoilerLogForm';
 import HistoryPage from './HistoryPage';
 
@@ -11,6 +11,11 @@ function App() {
   const [userRole, setUserRole] = useState<string | null>(
     localStorage.getItem('role')
   );
+
+  useEffect(() => {
+    // Wake up Render backend (free tier spins down)
+    fetch('https://shalimar-ops.onrender.com/').catch(() => { });
+  }, []);
 
   const handleLogin = (newToken: string, role: string) => {
     localStorage.setItem('token', newToken);

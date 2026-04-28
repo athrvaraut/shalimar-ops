@@ -68,6 +68,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [duplicateId, setDuplicateId] = useState<number | null>(null);
 
   const validate = () => {
     const w: string[] = [];
@@ -121,6 +122,15 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
         },
         body: JSON.stringify(payload),
       });
+
+      if (res.status === 409) {
+        const data = await res.json();
+        setDuplicateId(data.detail.existing_id);
+        setError(`⚠️ ${data.detail.message}. Click "Update Entry" to correct it.`);
+      } else if (!res.ok) {
+        const data = await res.json();
+        setError(JSON.stringify(data.detail || 'Submission failed'));
+      }
 
       if (res.ok) {
         if (form.coal_section_filled) {
@@ -176,6 +186,23 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpdate = async () => {
+    if (!duplicateId) return;
+    setLoading(true);
+    const payload = { ...form };
+    // same payload as submit but PUT to /boiler-log/{duplicateId}/update
+    const res = await fetch(`https://shalimar-ops.onrender.com/boiler-log/${duplicateId}/update`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      setSuccess(true); setDuplicateId(null); setError('');
+      setTimeout(() => setSuccess(false), 3000);
+    }
+    setLoading(false);
   };
 
   return (
@@ -405,6 +432,13 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
         {error && <div style={s.errorBox}>❌ {error}</div>}
         {success && <div style={s.successBox}>✅ Entry submitted successfully! Pending HOD approval.</div>}
 
+        {duplicateId && (
+          <button type="button" onClick={handleUpdate}
+            style={{ width: '100%', padding: '12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}>
+            ✏️ Update Existing Entry
+          </button>
+        )}
+
         <button type="submit" style={loading ? s.btnDisabled : s.btn} disabled={loading}>
           {loading ? 'Submitting...' : '📤 Submit Log Entry'}
         </button>
@@ -448,7 +482,7 @@ const s: Record<string, React.CSSProperties> = {
   hint: { fontWeight: 400, color: '#999', textTransform: 'none', letterSpacing: 0 },
   input: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' },
   inputWarn: { borderColor: '#ff9800', background: '#fff8f0' },
-  select: {padding: '10px 12px',border: '1.5px solid #e0e0e0',borderRadius: 8,fontSize: 14,outline: 'none',background: '#fff',width: '100%',boxSizing: 'border-box' as const},
+  select: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%', boxSizing: 'border-box' as const },
   textarea: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, resize: 'vertical', fontFamily: 'inherit' },
   btn: { width: '100%', padding: '15px', background: '#0f3460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
   btnDisabled: { width: '100%', padding: '15px', background: '#aaa', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'not-allowed', marginTop: 8 },
