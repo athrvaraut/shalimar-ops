@@ -33,6 +33,8 @@ export default function HistoryPage({ token, onBack }: Props) {
         headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
       });
       const d = await res.json();
+      // ADD THIS LINE:
+      console.log("Backend Response:", d);
       setData(Array.isArray(d) ? d : []);
     } catch {
       setData([]);
@@ -44,8 +46,13 @@ export default function HistoryPage({ token, onBack }: Props) {
   const downloadMonthlyBoilerExcel = async () => {
     const res = await fetch(
       `https://shalimar-ops.onrender.com/export/monthly-coal/${year}/${month}`,
-      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
-    );
+      { 
+    headers: { 
+      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+      'Content-Type': 'application/json' 
+    } 
+  }
+);
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = window.URL.createObjectURL(blob);
@@ -55,8 +62,13 @@ export default function HistoryPage({ token, onBack }: Props) {
   const downloadMonthlyPowerExcel = async () => {
     const res = await fetch(
       `https://shalimar-ops.onrender.com/export/power-monthly/${year}/${month}`,
-      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
-    );
+     { 
+    headers: { 
+      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+      'Content-Type': 'application/json' 
+    } 
+  }
+);
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = window.URL.createObjectURL(blob);
