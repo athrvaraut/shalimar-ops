@@ -130,9 +130,8 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
       } else if (!res.ok) {
         const data = await res.json();
         setError(JSON.stringify(data.detail || 'Submission failed'));
-      }
-
-      if (res.ok) {
+      } else if (res.ok) {
+        
         if (form.coal_section_filled) {
 
           try {

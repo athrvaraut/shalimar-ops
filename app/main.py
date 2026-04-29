@@ -92,7 +92,8 @@ def submit_boiler_log(
             status_code=409,
             detail={"message": f"Entry already exists for Shift {entry.shift} at {entry.log_time}", "existing_id": existing.id}
         )
-    # Validation — flag if out of safe range
+        
+    # FIX 1: Indented properly
     warnings = []
     if entry.steam_pressure and not (6 <= entry.steam_pressure <= 12):
         warnings.append(f"Steam pressure {entry.steam_pressure} outside safe range 6-12 KG/CM")
@@ -134,6 +135,70 @@ def submit_boiler_log(
     db.add(log)
     db.commit()
     db.refresh(log)
+
+    # FIX 2: Indented properly and handles both Create AND Update
+    if hasattr(entry, 'coal_consumed_sep') and entry.coal_consumed_sep:
+        from sqlalchemy import text
+        coal_date = str(entry.log_date)
+        
+        # Calculate all the math once
+        total_coal = (entry.coal_consumed_sep or 0) + (entry.coal_consumed_refinery or 0) + getattr(entry, 'coal_thermic', 0)
+        opening = getattr(entry, 'coal_opening_stock', 0) or 0
+        arrival = getattr(entry, 'coal_received', 0) or 0
+        closing = opening + arrival - total_coal
+        
+        steam_sep = (entry.steam_sep_closing or 0) - (entry.steam_sep_opening or 0)
+        steam_refl = (entry.steam_refl_closing or 0) - (entry.steam_refl_opening or 0)
+        total_steam = steam_sep + steam_refl
+        cs = round(total_steam / total_coal, 3) if total_coal > 0 else 0
+
+        existing_coal = db.query(models.DailyCoalSteam).filter(
+            models.DailyCoalSteam.report_date == coal_date
+        ).first()
+
+        if not existing_coal:
+            # CREATE a new daily report
+            coal_rec = models.DailyCoalSteam(
+                report_date=coal_date,
+                opening_coal_stock=opening,
+                coal_arrival_indian=arrival, 
+                coal_arrival_imported=0,
+                coal_consumed_sep=entry.coal_consumed_sep,
+                coal_consumed_refinery=entry.coal_consumed_refinery,
+                coal_thermic=getattr(entry, 'coal_thermic', 0),
+                total_coal_consumed=round(total_coal, 3),
+                closing_stock=round(closing, 3),
+                steam_sep_opening=entry.steam_sep_opening,
+                steam_sep_closing=entry.steam_sep_closing,
+                steam_sep_consumed=steam_sep,
+                steam_refl_opening=entry.steam_refl_opening,
+                steam_refl_closing=entry.steam_refl_closing,
+                steam_refl_consumed=steam_refl,
+                total_steam=total_steam,
+                cs_ratio=cs,
+                feed_water_temp=entry.feed_water_temp,
+                coal_bunker_pct=getattr(entry, 'coal_bunker_pct', 0),
+                steam_pressure_ok=getattr(entry, 'steam_pressure_ok', True),
+            )
+            db.add(coal_rec)
+        else:
+            # UPDATE the existing report with the newest numbers
+            existing_coal.total_coal_consumed = round(total_coal, 3)
+            existing_coal.closing_stock = round(closing, 3)
+            existing_coal.steam_sep_consumed = steam_sep
+            existing_coal.steam_refl_consumed = steam_refl
+            existing_coal.total_steam = total_steam
+            existing_coal.cs_ratio = cs
+            
+            existing_coal.steam_sep_opening = entry.steam_sep_opening
+            existing_coal.steam_sep_closing = entry.steam_sep_closing
+            existing_coal.steam_refl_opening = entry.steam_refl_opening
+            existing_coal.steam_refl_closing = entry.steam_refl_closing
+            existing_coal.coal_consumed_sep = entry.coal_consumed_sep
+            existing_coal.coal_consumed_refinery = entry.coal_consumed_refinery
+            
+        db.commit()
+
     return log
 
 @app.put("/boiler-log/{log_id}/update")
@@ -360,6 +425,10 @@ def export_daily_boiler_excel(
         models.DailyCoalSteam.report_date == date
     ).first()
 
+    coal_report = db.query(models.DailyCoalSteam).filter(
+    models.DailyCoalSteam.report_date == date
+    ).first()
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
@@ -581,9 +650,26 @@ def export_power_monthly_excel(
     # Get all power records for this month
     from sqlalchemy import text
     results = db.execute(text(
-        "SELECT * FROM power_consumption "
+        "SELECT reading_date, "
+        "SUM(sep_units) as sep_units, SUM(prep_units) as prep_units, "
+        "SUM(solar_units) as solar_units, SUM(silo_units) as silo_units, "
+        "SUM(doc_units) as doc_units, SUM(dsilo_units) as dsilo_units, "
+        "SUM(acm_units) as acm_units, SUM(boiler_units) as boiler_units, "
+        "SUM(chp_units) as chp_units, SUM(dm_units) as dm_units, "
+        "SUM(ug_tank_units) as ug_tank_units, SUM(refinery_units) as refinery_units, "
+        "SUM(etp_units) as etp_units, SUM(packing_units) as packing_units, "
+        "SUM(admin_units) as admin_units, SUM(dg_units) as dg_units, "
+        "SUM(msedcl_units) as msedcl_units, "
+        "MAX(power_kvah) as power_kvah, "
+        "SUM(diesel_opening_stock) as diesel_opening_stock, "
+        "SUM(diesel_received) as diesel_received, "
+        "SUM(diesel_consumed) as diesel_consumed, "
+        "SUM(dg_generated_units) as dg_generated_units, "
+        "STRING_AGG(dg_reason, '; ') as dg_reason "
+        "FROM power_consumption "
         "WHERE EXTRACT(YEAR FROM reading_date) = :year "
         "AND EXTRACT(MONTH FROM reading_date) = :month "
+        "GROUP BY reading_date "
         "ORDER BY reading_date ASC"
     ), {"year": year, "month": month}).mappings().all()
     records = [dict(r) for r in results]
@@ -702,7 +788,7 @@ def export_power_monthly_excel(
                 col = i + 3
                 col_letter = openpyxl.utils.get_column_letter(col)
                 # Formula: Sum from current_group_start to row right above this one
-                ws.cell(current_row, col, f"=SUM({col_letter}{current_group_start}:{col_letter}{current_row-1})")
+                ws.cell(current_row, col, f"=SUM({openpyxl.utils.get_column_letter(col)}{current_group_start}:{openpyxl.utils.get_column_letter(col)}{current_row-1})")
                 ws.cell(current_row, col).fill = light_blue
                 ws.cell(current_row, col).font = Font(bold=True)
                 ws.cell(current_row, col).border = border

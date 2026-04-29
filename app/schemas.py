@@ -64,6 +64,17 @@ class BoilerLogCreate(BaseModel):
     feed_water_temp: Optional[float] = None
     fd_pressure: Optional[float] = None
     remarks: Optional[str] = None
+    coal_opening_stock: Optional[float] = None
+coal_received: Optional[float] = None
+coal_consumed_sep: Optional[float] = None
+coal_consumed_refinery: Optional[float] = None
+coal_thermic: Optional[float] = None
+steam_sep_opening: Optional[float] = None
+steam_sep_closing: Optional[float] = None
+steam_refl_opening: Optional[float] = None
+steam_refl_closing: Optional[float] = None
+coal_bunker_pct: Optional[float] = None
+steam_pressure_ok: Optional[bool] = None
 
 class BoilerLogOut(BoilerLogCreate):
     id: int
