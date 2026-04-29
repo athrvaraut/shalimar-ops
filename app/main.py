@@ -657,25 +657,29 @@ def export_power_monthly_excel(
     data_rows_start = 4
 
     # Section groups with subtotals
+    # Define sections with group markers
     SECTION_GROUPS = [
+        # (SR, Name, Field, is_subtotal)
         ("1", "SEP", "sep_units", False),
         ("2", "PREP", "prep_units", False),
-        ("3", "SOLAR", "solar_units", False),
-        ("", "", None, True),   # subtotal row 1
-        ("4", "SILO", "silo_units", False),
-        ("5", "DOC", "doc_units", False),
-        ("6", "D-SILO", "dsilo_units", False),
-        ("7", "ACM", "acm_units", False),
-        ("", "", None, True),   # subtotal row 2
-        ("8", "BOILER", "boiler_units", False),
-        ("9", "CHP", "chp_units", False),
-        ("10", "DM PLANT", "dm_units", False),
-        ("11", "UG TANK", "ug_tank_units", False),
-        ("12", "REFINERY", "refinery_units", False),
-        ("13", "ETP", "etp_units", False),
-        ("14", "PACKING", "packing_units", False),
+        ("", "SOLAR", "solar_units", False),
+        ("3", "SILO", "silo_units", False),
+        ("4", "DOC", "doc_units", False),
+        ("5", "D-SILO", "dsilo_units", False),
+        ("", "SUBTOTAL (1-5)", None, True),   # Subtotal 1
+        ("6", "ACM/ SOYA CHUNKS", "acm_units", False),
+        ("7", "BOILER", "boiler_units", False),
+        ("8", "CHP", "chp_units", False),
+        ("9", "DM PLANT", "dm_units", False), 
+        ("", "UG TANK", "ug_tank_units", False),
+        ("", "SUBTOTAL (6-9)", None, True),   # Subtotal 2
+        ("10", "REFINERY", "refinery_units", False),
+        ("11", "ETP/ACID/MVR", "etp_units", False),
+        ("12", "PACKING", "packing_units", False),
+        ("", "SUBTOTAL (10-12)", None, True), # Subtotal 3
+        ("13", "ADMIN", "admin_units", False),
         ("15", "MISCELLENIOUS", None, False),
-        ("", "", None, True),   # subtotal row 4
+        ("", "SUBTOTAL (13-15)", None, True), # Subtotal 4
         ("16", "DG SET UNIT", "dg_units", False),
     ]
 
@@ -685,43 +689,48 @@ def export_power_monthly_excel(
     current_row = data_rows_start
 
     for sr, name, field, is_subtotal in SECTION_GROUPS:
+        # ALWAYS set border for Col 1 and 2 first
+        ws.cell(current_row, 1).border = border
+        ws.cell(current_row, 2).border = border
+        
         if is_subtotal:
-            # Add subtotal row
-            grp_start = openpyxl.utils.get_column_letter(3)
-            grp_end = openpyxl.utils.get_column_letter(2 + len(records))
-            # SR and name cells
-            ws.cell(current_row, 1).border = border
-            ws.cell(current_row, 2).border = border
+            # STYLE THE SUBTOTAL ROW
+            ws.cell(current_row, 2, name).font = Font(bold=True)
+            ws.cell(current_row, 2).fill = light_blue
+            
             for i, rec in enumerate(records):
                 col = i + 3
-                # Sum from group start to current row - 1
-                ws.cell(current_row, col, f"=SUM({openpyxl.utils.get_column_letter(col)}{current_group_start}:{openpyxl.utils.get_column_letter(col)}{current_row-1})")
+                col_letter = openpyxl.utils.get_column_letter(col)
+                # Formula: Sum from current_group_start to row right above this one
+                ws.cell(current_row, col, f"=SUM({col_letter}{current_group_start}:{col_letter}{current_row-1})")
                 ws.cell(current_row, col).fill = light_blue
                 ws.cell(current_row, col).font = Font(bold=True)
                 ws.cell(current_row, col).border = border
                 ws.cell(current_row, col).alignment = center
-            # Total col formula
-            ws.cell(current_row, total_col, f"=SUM({openpyxl.utils.get_column_letter(3)}{current_row}:{openpyxl.utils.get_column_letter(2+len(records))}{current_row})")
+            
+            # Total column for the subtotal row
+            row_start_letter = openpyxl.utils.get_column_letter(3)
+            row_end_letter = openpyxl.utils.get_column_letter(2 + len(records))
+            ws.cell(current_row, total_col, f"=SUM({row_start_letter}{current_row}:{row_end_letter}{current_row})")
             ws.cell(current_row, total_col).fill = light_blue
             ws.cell(current_row, total_col).font = Font(bold=True)
             ws.cell(current_row, total_col).border = border
-            current_group_start = current_row + 1
+            
+            current_group_start = current_row + 1 # Next group starts after subtotal
             current_row += 1
             continue
 
-        # Normal section row
-        ws.cell(current_row, 1, sr).border = border
-        ws.cell(current_row, 1).alignment = center
-        ws.cell(current_row, 2, name).border = border
-        ws.cell(current_row, 2).font = Font(bold=True) if sr else Font()
+        # --- NORMAL SECTION ROW ---
+        ws.cell(current_row, 1, sr).alignment = center
+        ws.cell(current_row, 2, name).font = Font(bold=True) if sr else Font()
 
         for i, rec in enumerate(records):
             val = rec.get(field, 0) or 0 if field else 0
             c = ws.cell(current_row, i + 3, val)
             c.border = border
             c.alignment = center
-
-        # Total column
+            
+        # Total column for normal row
         fc = openpyxl.utils.get_column_letter(3)
         lc = openpyxl.utils.get_column_letter(2 + len(records))
         ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
@@ -733,20 +742,21 @@ def export_power_monthly_excel(
     summary_rows = [
         ("TOTAL UNIT WITH SOLAR GEN. UNIT", "total_with_solar"),
         ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar"),
-        ("MSDCL UNIT (KWH)", "msedcl"),
+        ("MSEDCL UNIT (KWH)", "msedcl"),
         ("POWER (KVAH)", "kvah"),
         ("POWER FACTOR", "pf"),
     ]
 
     for label, key in summary_rows:
+        ws.cell(current_row, 1).border = border  # Fix border for Col A
         c2 = ws.cell(current_row, 2, label)
         c2.font = Font(bold=True)
         c2.border = border
-        ws.cell(current_row, 1).border = border  # ADD BORDER to col A too!
         
         for i, rec in enumerate(records):
             col = i + 3
             if key == "total_with_solar":
+                # Only sum real data fields (not subtotal markers)
                 val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3])
             elif key == "total_without_solar":
                 val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3] and f[2] != 'solar_units')
@@ -760,16 +770,19 @@ def export_power_monthly_excel(
                 val = round(kwh/kvah, 4) if kvah and kvah > 0 else 0
             else:
                 val = 0
-            
+                
             c3 = ws.cell(current_row, col, val)
             c3.fill = yellow_fill
             c3.font = Font(bold=True)
             c3.border = border
             c3.alignment = center
         
-        # Total column
-        if key not in ("pf",):
-            ws.cell(current_row, total_col, f"=SUM({openpyxl.utils.get_column_letter(3)}{current_row}:{openpyxl.utils.get_column_letter(2+len(records))}{current_row})")
+        # Summary Total Column
+        if key != "pf":
+            fc = openpyxl.utils.get_column_letter(3)
+            lc = openpyxl.utils.get_column_letter(2 + len(records))
+            ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
+            
         ws.cell(current_row, total_col).fill = yellow_fill
         ws.cell(current_row, total_col).font = Font(bold=True)
         ws.cell(current_row, total_col).border = border
