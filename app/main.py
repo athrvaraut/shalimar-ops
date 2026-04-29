@@ -774,3 +774,163 @@ def export_power_monthly_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=Power_Monthly_Report_{year}_{month}.xlsx"}
     )
+
+
+@app.get("/export/monthly-coal/{year}/{month}")
+def export_monthly_coal_excel(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    import calendar
+    from datetime import date, datetime
+
+    month_name = datetime(year, month, 1).strftime("%b").upper()
+    reports = db.query(models.DailyCoalSteam).filter(
+        models.DailyCoalSteam.report_date >= f"{year}-{month:02d}-01",
+        models.DailyCoalSteam.report_date <= f"{year}-{month:02d}-{calendar.monthrange(year,month)[1]}"
+    ).order_by(models.DailyCoalSteam.report_date).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    blue_fill = PatternFill("solid", fgColor="BDD7EE")
+    yellow_fill = PatternFill("solid", fgColor="FFFF00")
+
+    # Header rows exactly matching father's file
+    ws["A1"] = "SHALIMAR NUTRIENTS PRIVATE LIMITED"
+    ws["A1"].font = Font(bold=True, size=13)
+    ws["A2"] = "BOILER SECTION"
+    ws["A2"].font = bold
+    ws["A3"] = f"COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}"
+    ws["A3"].font = Font(bold=True, size=11)
+    ws.merge_cells("A3:O3")
+    ws["A3"].alignment = center
+
+    # Column headers exactly matching father's file
+    col_headers = [
+        "DATE", "OPENING STOCK OF COAL IN MT", "ARRIVAL COAL IN MT",
+        "COAL CONSUMPTION IN MT (SEP)", "CLOSING STOCK",
+        "COAL CONSUMPTION IN MT (REF.)", "TOTAL COAL FOR STEAM PRODUCTION",
+        "COAL CONSUMPTION IN THERMIC BOILER IN MT",
+        "COAL CONSUMPTION IN MT (TOTAL)", "CLOSING STOCK IN MT",
+        "STEAM PRODUCTION IN KG (SEP)", "STEAM PRODUCTION IN KG (REF.)",
+        "TOTAL STEAM PRODUCTION IN KG", "C/S RATIO", "FEED WATER TEMP (°C)"
+    ]
+
+    for i, h in enumerate(col_headers, 1):
+        c = ws.cell(4, i, h)
+        c.font = bold; c.fill = blue_fill
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = border
+    ws.row_dimensions[4].height = 50
+
+    # Data rows
+    total_coal_sum = 0; total_steam_sum = 0
+    for r in reports:
+        row_num = ws.max_row + 1
+        date_val = r.report_date
+        total_coal = r.total_coal_consumed or 0
+        total_steam = r.total_steam or 0
+        total_coal_sum += total_coal; total_steam_sum += total_steam
+
+        row_data = [
+            date_val, r.opening_coal_stock,
+            (r.coal_arrival_indian or 0) + (r.coal_arrival_imported or 0),
+            r.coal_consumed_sep, r.closing_stock,
+            r.coal_consumed_refinery,
+            (r.coal_consumed_sep or 0) + (r.coal_consumed_refinery or 0),
+            r.coal_thermic, total_coal, r.closing_stock,
+            r.steam_sep_consumed, r.steam_refl_consumed,
+            total_steam, r.cs_ratio, r.feed_water_temp
+        ]
+        for i, val in enumerate(row_data, 1):
+            c = ws.cell(row_num, i, val)
+            c.border = border; c.alignment = center
+            # Highlight C/S ratio
+            if i == 14 and val:
+                if 5.0 <= float(val) <= 5.6:
+                    c.fill = PatternFill("solid", fgColor="E2EFDA")
+                else:
+                    c.fill = PatternFill("solid", fgColor="FADBD8")
+
+    # Totals row
+    total_row = ws.max_row + 1
+    ws.cell(total_row, 1, "TOTAL").font = Font(bold=True)
+    ws.cell(total_row, 9, round(total_coal_sum, 3)).font = Font(bold=True)
+    ws.cell(total_row, 9).fill = yellow_fill
+    ws.cell(total_row, 13, total_steam_sum).font = Font(bold=True)
+    ws.cell(total_row, 13).fill = yellow_fill
+    avg_cs = round(total_steam_sum / total_coal_sum, 3) if total_coal_sum > 0 else 0
+    ws.cell(total_row, 14, avg_cs).font = Font(bold=True)
+    ws.cell(total_row, 14).fill = yellow_fill
+
+    # Column widths
+    widths = [12, 18, 14, 18, 14, 18, 18, 18, 16, 14, 16, 16, 16, 12, 14]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    buffer = BytesIO()
+    wb.save(buffer); buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=Coal_Steam_{month_name}_{year}.xlsx"}
+    )
+
+@app.get("/history/boiler")
+def history_boiler(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import text, extract
+    results = db.execute(text(
+        "SELECT * FROM boiler_log_entries "
+        "WHERE EXTRACT(YEAR FROM log_date) = :year "
+        "AND EXTRACT(MONTH FROM log_date) = :month "
+        "ORDER BY log_date ASC, log_time ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
+
+@app.get("/history/coal")
+def history_coal(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM daily_coal_steam "
+        "WHERE EXTRACT(YEAR FROM report_date) = :year "
+        "AND EXTRACT(MONTH FROM report_date) = :month "
+        "ORDER BY report_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
+
+@app.get("/history/power")
+def history_power(
+    year: int, month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM power_consumption "
+        "WHERE EXTRACT(YEAR FROM reading_date) = :year "
+        "AND EXTRACT(MONTH FROM reading_date) = :month "
+        "ORDER BY reading_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    return [dict(r) for r in results]
+
+# ─── HEALTH CHECK ─────────────────────────────────────────
+
+@app.get("/")
+def root():
+    return {"status": "Shalimar Plant Ops API is running", "version": "1.0.0"}

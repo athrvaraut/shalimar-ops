@@ -92,37 +92,41 @@ export default function HistoryPage({ token, onBack }: Props) {
         </button>
       </div>
 
-      {/* Year + Month selector */}
+      {/* Year + Month Navigation Bar */}
       <div style={s.filterBar}>
-        <button style={s.arrowBtn}
-          onClick={() => setYear(y => y - 1)}>◀</button>
+        <button style={s.arrowBtn} onClick={() => setYear(y => y - 1)}>◀</button>
         <span style={s.yearLabel}>{year}</span>
-        <button style={s.arrowBtn}
-          onClick={() => setYear(y => y + 1)}>▶</button>
+        <button style={s.arrowBtn} onClick={() => setYear(y => y + 1)}>▶</button>
+
         <div style={s.monthRow}>
-          {months.map((m, i) => (
-            <button
-              key={m}
+          {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((m, i) => (
+            <button key={m}
               style={month === i + 1 ? s.monthActive : s.monthBtn}
-              onClick={() => setMonth(i + 1)}
-            >{m}</button>
+              onClick={() => setMonth(i + 1)}>
+              {m}
+            </button>
           ))}
         </div>
       </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-        {section === 'boiler' && (
-          <button onClick={downloadMonthlyBoilerExcel}
-            style={{ background: '#0f3460', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-            📊 Monthly Boiler Excel
-          </button>
-        )}
-        {section === 'power' && (
-          <button onClick={downloadMonthlyPowerExcel}
-            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-            📊 Monthly Power Excel
-          </button>
-        )}
+      {/* Monthly Download Banner — clean full-width card */}
+      <div style={s.downloadBanner}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 20 }}>{section === 'boiler' ? '🔥' : '⚡'}</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460' }}>
+              {section === 'boiler' ? 'Boiler Monthly Report' : 'Power Monthly Report'}
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
+              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]} {year} — all entries compiled
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={section === 'boiler' ? downloadMonthlyBoilerExcel : downloadMonthlyPowerExcel}
+          style={s.downloadBtn}>
+          📥 Download Monthly Excel
+        </button>
       </div>
 
       {/* Calendar day grid */}
@@ -299,6 +303,8 @@ const s: Record<string, React.CSSProperties> = {
   sTab: { padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#666', whiteSpace: 'nowrap' as const, borderBottom: '2px solid transparent' },
   sTabActive: { padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#0f3460', fontWeight: 700, whiteSpace: 'nowrap' as const, borderBottom: '2px solid #0f3460' },
   filterBar: { background: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const, borderBottom: '1px solid #e5e7eb' },
+  downloadBanner: {background: '#fff',margin: '12px 16px 0',borderRadius: 12,padding: '14px 18px',display: 'flex',justifyContent: 'space-between',alignItems: 'center',boxShadow: '0 1px 4px rgba(0,0,0,0.08)',border: '1px solid #e5e7eb',maxWidth: 760,marginLeft: 'auto',marginRight: 'auto',},
+  downloadBtn: {background: '#0f3460',color: '#fff',border: 'none',borderRadius: 8,padding: '9px 18px',cursor: 'pointer',fontSize: 13,fontWeight: 700,whiteSpace: 'nowrap' as const,boxShadow: '0 2px 6px rgba(15,52,96,0.3)',},
   arrowBtn: { background: '#f0f2f5', border: '1px solid #e0e0e0', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 14 },
   yearLabel: { fontSize: 16, fontWeight: 700, minWidth: 50, textAlign: 'center' as const },
   monthRow: { display: 'flex', gap: 4, flexWrap: 'wrap' as const },
