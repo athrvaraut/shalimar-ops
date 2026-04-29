@@ -32,6 +32,15 @@ export default function HistoryPage({ token, onBack }: Props) {
       const res = await fetch(`${API}${endpoint}`, {
         headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
       });
+
+      // 🛑 ADD THIS AUTO-LOGOUT CHECK HERE 🛑
+      if (res.status === 401) {
+        console.warn("Session expired. Logging out automatically...");
+        localStorage.removeItem('token');     // Destroy the dead token
+        window.location.href = '/login';      // Kick them back to the login screen
+        return;                               // Stop running the rest of the code
+      }
+      
       const d = await res.json();
       // ADD THIS LINE:
       console.log("Backend Response:", d);
