@@ -433,20 +433,34 @@ def export_daily_boiler_excel(
 
     ws.append([])  # row 6 empty
 
-    # ROW 7 - Coal bunker
-    cell(7, 2, "PERTICULAR", bold, align=left, b=border)
+# ROW 7 - Coal bunker (Fixed with all borders)
+    cell(7, 2, "PERTICULAR", bold, blue_fill, left, border)
+    cell(7, 3, None, b=border) # Border for empty C
     cell(7, 4, "COAL IN BUNKER (%)", bold, blue_fill, center, border)
     cell(7, 5, "REMARKS", bold, blue_fill, center, border)
+    cell(7, 6, None, b=border) # Border for empty F
+    cell(7, 7, None, b=border) # Border for empty G
+    cell(7, 8, None, b=border) # Border for empty H
     cell(7, 9, "COAL FOR STEAM", bold, align=center, b=border)
+    cell(7, 10, None, b=border) # Border for empty J
 
+    # ROW 8 - Data
     cell(8, 2, "COAL BUNKER STATUS", bold, align=left, b=border)
+    cell(8, 3, None, b=border)
     cell(8, 4, report.coal_bunker_pct if report else None, align=center, b=border)
+    cell(8, 5, None, b=border)
+    cell(8, 6, None, b=border)
+    cell(8, 7, None, b=border)
+    cell(8, 8, None, b=border)
     cell(8, 9, date_display, align=center, b=border)
 
+    # ROW 9 - Pressure
     cell(9, 2, "STEAM PRESSURE PROBLEM", bold, align=left, b=border)
+    cell(9, 3, None, b=border)
     sp_val = "NO" if (report and report.steam_pressure_ok) else "YES ⚠️"
     sp_fill = green_fill if (report and report.steam_pressure_ok) else PatternFill("solid", fgColor="FADBD8")
     cell(9, 4, sp_val, Font(bold=True), sp_fill, center, border)
+    cell(9, 5, None, b=border)
 
     ws.append([])  # row 10 empty
 
@@ -462,15 +476,20 @@ def export_daily_boiler_excel(
     for i, h in enumerate(steam_headers, 2):
         cell(12, i, h, bold, blue_fill, center, border)
 
+    # FIXED ROW 13 - Shifts data to Col 7 (G)
     if report:
         cell(13, 2, report.steam_sep_opening, align=center, b=border)
         cell(13, 3, report.steam_sep_closing, align=center, b=border)
-        cell(13, 5, report.steam_sep_consumed, Font(bold=True), yellow_fill, center, border)
-        cell(13, 6, report.feed_water_temp, align=center, b=border)
+        cell(13, 4, None, align=center, b=border) # Empty D
+        cell(13, 5, report.steam_sep_consumed, Font(bold=True), yellow_fill, center, border) # E
+        cell(13, 6, None, align=center, b=border) # Empty F
+        cell(13, 7, report.feed_water_temp, align=center, b=border) # G (Now aligned!)
+        cell(13, 8, None, align=center, b=border) # Empty H
+        cell(13, 9, None, align=center, b=border) # Empty I
 
     ws.append([])  # row 14
 
-    # ROW 15 - Steam REFL header  
+    # ROW 15 - Steam REFL header 
     ws.merge_cells("B15:J15")
     cell(15, 2, "STEAM FLOW METER READING (REFINERY)", Font(bold=True), blue_fill, center, border)
 
@@ -482,13 +501,17 @@ def export_daily_boiler_excel(
     for i, h in enumerate(refl_headers, 2):
         cell(16, i, h, bold, blue_fill, center, border)
 
+    # FIXED ROW 17 - Shifts Total Steam to 7 (G) and CS Ratio to 9 (I)
     if report:
         cell(17, 2, report.steam_refl_opening, align=center, b=border)
         cell(17, 3, report.steam_refl_closing, align=center, b=border)
-        cell(17, 5, report.steam_refl_consumed, Font(bold=True), yellow_fill, center, border)
-        cell(17, 6, report.total_steam, Font(bold=True), yellow_fill, center, border)
+        cell(17, 4, None, align=center, b=border) # Empty D
+        cell(17, 5, report.steam_refl_consumed, Font(bold=True), yellow_fill, center, border) # E
+        cell(17, 6, None, align=center, b=border) # Empty F
+        cell(17, 7, report.total_steam, Font(bold=True), yellow_fill, center, border) # G (Aligned!)
+        cell(17, 8, None, align=center, b=border) # Empty H
         cs_fill = green_fill if (report.cs_ratio and 5.0 <= report.cs_ratio <= 5.6) else PatternFill("solid", fgColor="FADBD8")
-        cell(17, 8, report.cs_ratio, Font(bold=True), cs_fill, center, border)
+        cell(17, 9, report.cs_ratio, Font(bold=True), cs_fill, center, border) # I (Aligned!)
 
     # Column widths matching father's layout
     col_widths = {
