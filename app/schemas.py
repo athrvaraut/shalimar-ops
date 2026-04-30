@@ -65,16 +65,16 @@ class BoilerLogCreate(BaseModel):
     fd_pressure: Optional[float] = None
     remarks: Optional[str] = None
     coal_opening_stock: Optional[float] = None
-coal_received: Optional[float] = None
-coal_consumed_sep: Optional[float] = None
-coal_consumed_refinery: Optional[float] = None
-coal_thermic: Optional[float] = None
-steam_sep_opening: Optional[float] = None
-steam_sep_closing: Optional[float] = None
-steam_refl_opening: Optional[float] = None
-steam_refl_closing: Optional[float] = None
-coal_bunker_pct: Optional[float] = None
-steam_pressure_ok: Optional[bool] = None
+    coal_received: Optional[float] = None           # ← 4 spaces
+    coal_consumed_sep: Optional[float] = None       # ← 4 spaces
+    coal_consumed_refinery: Optional[float] = None  # ← 4 spaces
+    coal_thermic: Optional[float] = None            # ← 4 spaces
+    steam_sep_opening: Optional[float] = None       # ← 4 spaces
+    steam_sep_closing: Optional[float] = None       # ← 4 spaces
+    steam_refl_opening: Optional[float] = None      # ← 4 spaces
+    steam_refl_closing: Optional[float] = None      # ← 4 spaces
+    coal_bunker_pct: Optional[float] = None         # ← 4 spaces
+    steam_pressure_ok: Optional[bool] = None        # ← 4 spaces
 
 class BoilerLogOut(BoilerLogCreate):
     id: int
@@ -107,7 +107,6 @@ class DailyCoalSteamCreate(BaseModel):
 
 class DailyCoalSteamOut(DailyCoalSteamCreate):
     id: int
-    report_date: str  # change this line to:
     report_date: date  # ← use date type instead of str
     total_coal_consumed: Optional[float]
     closing_stock: Optional[float]
@@ -122,6 +121,8 @@ class DailyCoalSteamOut(DailyCoalSteamCreate):
 # --- Power Consumption ---
 class PowerConsumptionCreate(BaseModel):
     reading_date: str
+    shift: Optional[str] = 'A'       
+    operator_name: Optional[str] = None 
     sep_units: float = 0
     prep_units: float = 0
     solar_units: float = 0

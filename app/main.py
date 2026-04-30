@@ -388,6 +388,8 @@ def submit_power(
     if existing:
         # 🔄 UPDATE EXISTING RECORD
         existing.entered_by = current_user.id
+        existing.shift = data.shift if hasattr(data, 'shift') else 'A'
+        existing.operator_name = getattr(data, 'operator_name', None)
         existing.sep_units = data.sep_units
         existing.prep_units = data.prep_units
         existing.solar_units = data.solar_units
@@ -1003,12 +1005,12 @@ def export_monthly_coal_excel(
 
     month_name = datetime(year, month, 1).strftime("%b").upper()
      # Try daily_coal_steam first
+    prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
         "SELECT * FROM daily_coal_steam "
-        "WHERE EXTRACT(YEAR FROM report_date) = :year "
-        "AND EXTRACT(MONTH FROM report_date) = :month "
+        "WHERE report_date LIKE :prefix "
         "ORDER BY report_date ASC"
-    ), {"year": year, "month": month}).mappings().all()
+        ), {"prefix": prefix}).mappings().all()
     reports = [SimpleNamespace(**dict(r)) for r in results]
     
     # Also check boiler_log_entries for coal data merged there
@@ -1023,11 +1025,11 @@ def export_monthly_coal_excel(
             "steam_refl_opening, steam_refl_closing, steam_refl_consumed, "
             "total_steam, cs_ratio, feed_water_temp, coal_bunker_pct "
             "FROM boiler_log_entries "
-            "WHERE EXTRACT(YEAR FROM CAST(log_date AS DATE)) = :year "
-            "AND EXTRACT(MONTH FROM CAST(log_date AS DATE)) = :month "
+            "WHERE log_date LIKE :prefix "
             "AND coal_opening_stock IS NOT NULL "
             "ORDER BY log_date ASC"
-        ), {"year": year, "month": month}).mappings().all()
+        ), {"prefix": prefix}).mappings().all()
+        
         reports = [SimpleNamespace(**dict(r)) for r in results2]
 
     wb = openpyxl.Workbook()
@@ -1129,13 +1131,13 @@ def history_boiler(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    from sqlalchemy import text, extract
+    from sqlalchemy import text
+    prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
         "SELECT * FROM boiler_log_entries "
-        "WHERE EXTRACT(YEAR FROM log_date) = :year "
-        "AND EXTRACT(MONTH FROM log_date) = :month "
+        "WHERE log_date LIKE :prefix "
         "ORDER BY log_date ASC, log_time ASC"
-    ), {"year": year, "month": month}).mappings().all()
+    ), {"prefix": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 @app.get("/history/coal")
@@ -1145,12 +1147,12 @@ def history_coal(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     from sqlalchemy import text
+    prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
         "SELECT * FROM daily_coal_steam "
-        "WHERE EXTRACT(YEAR FROM report_date) = :year "
-        "AND EXTRACT(MONTH FROM report_date) = :month "
+        "WHERE report_date LIKE :prefix "
         "ORDER BY report_date ASC"
-    ), {"year": year, "month": month}).mappings().all()
+    ), {"prefix": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 @app.get("/history/power")
@@ -1160,12 +1162,12 @@ def history_power(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     from sqlalchemy import text
+    prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
         "SELECT * FROM power_consumption "
-        "WHERE EXTRACT(YEAR FROM reading_date) = :year "
-        "AND EXTRACT(MONTH FROM reading_date) = :month "
+        "WHERE reading_date LIKE :prefix "
         "ORDER BY reading_date ASC"
-    ), {"year": year, "month": month}).mappings().all()
+    ), {"prefix": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 # ─── HEALTH CHECK ─────────────────────────────────────────

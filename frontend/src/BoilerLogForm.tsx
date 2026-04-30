@@ -131,15 +131,15 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
         const data = await res.json();
         setError(JSON.stringify(data.detail || 'Submission failed'));
       } else if (res.ok) {
-        
+
         if (form.coal_section_filled) {
 
           try {
             const coalPayload = {
               report_date: form.log_date,
               opening_coal_stock: parseFloat(form.coal_opening_stock) || 0,
-              // --- CHANGED: Combined into a single Coal Arrival field ---
-              coal_arrival: parseFloat(form.coal_arrival) || 0,
+              coal_arrival_indian: parseFloat(form.coal_arrival) || 0,  // ← was coal_arrival
+              coal_arrival_imported: 0,                                  // ← add this
               coal_consumed_sep: parseFloat(form.coal_consumed_sep) || 0,
               coal_consumed_refinery: parseFloat(form.coal_consumed_refinery) || 0,
               coal_thermic: parseFloat(form.coal_thermic) || 0,
@@ -150,8 +150,8 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               feed_water_temp: parseFloat(form.feed_water_temp_daily) || 0,
               coal_bunker_pct: parseFloat(form.coal_bunker_pct) || 0,
               steam_pressure_ok: form.steam_pressure_ok,
-              coal_rate_per_mt: parseFloat(form.coal_rate_per_mt) || 0,
-              coal_gcv: parseFloat(form.coal_gcv) || 0,
+              coal_rate_per_mt: 0,
+              coal_gcv: 0,
             };
             await fetch('https://shalimar-ops.onrender.com/daily-report', {
               method: 'POST',
@@ -159,8 +159,11 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               body: JSON.stringify(coalPayload),
             });
             // Silently succeeds or skips (upsert handles duplicate)
-          } catch {
-            console.log("Failed to submit daily coal summary");
+          } catch (err) {
+            console.error("Coal summary failed:", err);
+            // Show in UI so father knows
+            setError("Boiler entry saved but coal summary failed. Please submit via Daily Coal form.");
+            return; // Add this so it stops here and doesn't show the "Success" message below
           }
         }
         setSuccess(true);
