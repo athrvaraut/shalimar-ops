@@ -53,19 +53,36 @@ export default function HistoryPage({ token, onBack }: Props) {
   };
 
   const downloadMonthlyBoilerExcel = async () => {
-    const res = await fetch(
-      `https://shalimar-ops.onrender.com/export/monthly-coal/${year}/${month}`,
-      { 
-    headers: { 
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-      'Content-Type': 'application/json' 
-    } 
-  }
-);
+    try {
+      const res = await fetch(
+        `https://shalimar-ops.onrender.com/export/monthly-coal/${year}/${month}`,
+        { 
+          headers: { 
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+            // Note: Removed 'Content-Type' as it is not needed for a GET request fetching a file
+          } 
+        }
+      );
+
+      if (!res.ok) { 
+        alert('No data found for this month.'); 
+        return; 
+      }
+
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = window.URL.createObjectURL(blob);
     a.download = `Boiler_Monthly_${year}_${month}.xlsx`; a.click();
+
+    document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(a.href); // Cleans up browser memory
+      
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      alert("Failed to download the Excel file. Please check your connection.");
+    }
   };
 
   const downloadMonthlyPowerExcel = async () => {

@@ -13,6 +13,25 @@ from app import models, schemas, auth
 # Tables already created in Supabase directly
 # Base.metadata.create_all(bind=engine)
 
+# Replace with this safe formatter:
+from datetime import date, datetime
+
+def safe_date_str(val):
+    if val is None:
+        return ''
+    if isinstance(val, (date, datetime)):
+        return val.strftime("%d/%m/%Y")
+    # Handle Excel serial number
+    if isinstance(val, (int, float)):
+        from datetime import timedelta
+        base = datetime(1899, 12, 30)
+        return (base + timedelta(days=int(val))).strftime("%d/%m/%Y")
+    # String
+    try:
+        return datetime.strptime(str(val)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except:
+        return str(val)
+
 app = FastAPI(title="Shalimar Plant Ops", version="1.0.0")
 
 # CORS — allow React frontend to talk to this backend
@@ -421,13 +440,28 @@ def export_daily_boiler_excel(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    report = db.query(models.DailyCoalSteam).filter(
-        models.DailyCoalSteam.report_date == date
-    ).first()
-
-    coal_report = db.query(models.DailyCoalSteam).filter(
-    models.DailyCoalSteam.report_date == date
-    ).first()
+    from sqlalchemy import text
+    
+    # Pull coal/steam from BOTH tables — boiler_log_entries first, fallback to daily_coal_steam
+    coal_result = db.execute(text(
+        "SELECT * FROM boiler_log_entries "
+        "WHERE log_date::text = :date AND coal_opening_stock IS NOT NULL "
+        "ORDER BY id DESC LIMIT 1"
+    ), {"date": date}).mappings().fetchone()
+    
+    # If not in boiler_log_entries, check daily_coal_steam
+    if not coal_result:
+        coal_result = db.execute(text(
+            "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
+        ), {"date": date}).mappings().fetchone()
+    
+    report = dict(coal_result) if coal_result else None
+    
+    logs = db.execute(text(
+        "SELECT * FROM boiler_log_entries "
+        "WHERE log_date::text = :date ORDER BY shift ASC, log_time ASC"
+    ), {"date": date}).mappings().all()
+    logs = [dict(r) for r in logs]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -454,6 +488,9 @@ def export_daily_boiler_excel(
 
     # Parse date for display
     from datetime import datetime
+
+    date_display = safe_date_str(date)
+
     try:
         d = datetime.strptime(date, "%Y-%m-%d")
         date_display = d.strftime("%d/%m/%Y")
@@ -709,10 +746,7 @@ def export_power_monthly_excel(
     for i, rec in enumerate(records):
         col = i + 3
         date_val = rec.get('reading_date')
-        if hasattr(date_val, 'strftime'):
-            date_str = date_val.strftime("%d/%m/%Y")
-        else:
-            date_str = str(date_val)[:10]
+        date_str = safe_date_str(rec.get('reading_date'))
         c = ws.cell(2, col, date_str)
         c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
 
@@ -906,12 +940,37 @@ def export_monthly_coal_excel(
 ):
     import calendar
     from datetime import date, datetime
+    from sqlalchemy import text          # 👈 FIX 1: Clears the "text is not defined" error
+    from types import SimpleNamespace    # 👈 Fixes object dot-notation (r.report_date)
 
     month_name = datetime(year, month, 1).strftime("%b").upper()
-    reports = db.query(models.DailyCoalSteam).filter(
-        models.DailyCoalSteam.report_date >= f"{year}-{month:02d}-01",
-        models.DailyCoalSteam.report_date <= f"{year}-{month:02d}-{calendar.monthrange(year,month)[1]}"
-    ).order_by(models.DailyCoalSteam.report_date).all()
+     # Try daily_coal_steam first
+    results = db.execute(text(
+        "SELECT * FROM daily_coal_steam "
+        "WHERE EXTRACT(YEAR FROM report_date) = :year "
+        "AND EXTRACT(MONTH FROM report_date) = :month "
+        "ORDER BY report_date ASC"
+    ), {"year": year, "month": month}).mappings().all()
+    reports = [SimpleNamespace(**dict(r)) for r in results]
+    
+    # Also check boiler_log_entries for coal data merged there
+    if not records:
+        results2 = db.execute(text(
+            "SELECT DISTINCT ON (log_date) log_date as report_date, "
+            "coal_opening_stock as opening_coal_stock, "
+            "coal_arrival_indian, coal_arrival_imported, "
+            "coal_consumed_sep, coal_consumed_refinery, coal_thermic, "
+            "total_coal_consumed, closing_stock, "
+            "steam_sep_opening, steam_sep_closing, steam_sep_consumed, "
+            "steam_refl_opening, steam_refl_closing, steam_refl_consumed, "
+            "total_steam, cs_ratio, feed_water_temp, coal_bunker_pct "
+            "FROM boiler_log_entries "
+            "WHERE EXTRACT(YEAR FROM CAST(log_date AS DATE)) = :year "
+            "AND EXTRACT(MONTH FROM CAST(log_date AS DATE)) = :month "
+            "AND coal_opening_stock IS NOT NULL "
+            "ORDER BY log_date ASC"
+        ), {"year": year, "month": month}).mappings().all()
+        records = [dict(r) for r in results2]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -956,13 +1015,13 @@ def export_monthly_coal_excel(
     total_coal_sum = 0; total_steam_sum = 0
     for r in reports:
         row_num = ws.max_row + 1
-        date_val = r.report_date
+        date_str = safe_date_str(getattr(r, 'report_date', getattr(r, 'log_date', None)))
         total_coal = r.total_coal_consumed or 0
         total_steam = r.total_steam or 0
         total_coal_sum += total_coal; total_steam_sum += total_steam
 
         row_data = [
-            date_val, r.opening_coal_stock,
+            date_str, r.opening_coal_stock,
             (r.coal_arrival_indian or 0) + (r.coal_arrival_imported or 0),
             r.coal_consumed_sep, r.closing_stock,
             r.coal_consumed_refinery,
