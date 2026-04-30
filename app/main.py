@@ -380,105 +380,72 @@ def submit_power(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.require_role("hod", "operator", "assistant"))
 ):
-    # 1. Check if a report for this date already exists
-    existing = db.query(models.PowerConsumption).filter(
-        models.PowerConsumption.reading_date == data.reading_date
-    ).first()
+    from sqlalchemy import text
+    
+    date_str = str(data.reading_date)
+    
+    # Check existing
+    existing = db.execute(text(
+        "SELECT id FROM power_consumption WHERE reading_date::text = :d LIMIT 1"
+    ), {"d": date_str}).mappings().fetchone()
+
+    params = {
+        "d": date_str, "uid": str(current_user.id),
+        "sep": data.sep_units or 0, "prep": data.prep_units or 0,
+        "solar": data.solar_units or 0, "silo": data.silo_units or 0,
+        "doc": data.doc_units or 0, "dsilo": data.dsilo_units or 0,
+        "acm": data.acm_units or 0, "boiler": data.boiler_units or 0,
+        "chp": data.chp_units or 0, "dm": data.dm_units or 0,
+        "ug": data.ug_tank_units or 0, "ref": data.refinery_units or 0,
+        "etp": data.etp_units or 0, "pack": data.packing_units or 0,
+        "admin": data.admin_units or 0, "dg": data.dg_units or 0,
+        "msedcl": data.msedcl_units or 0,
+        "kvah": data.power_kvah or 0, "pf": data.power_factor or 0,
+        "d_open": data.diesel_opening_stock or 0,
+        "d_recv": data.diesel_received or 0,
+        "d_cons": data.diesel_consumed or 0,
+        "dg_gen": data.dg_generated_units or 0,
+        "dg_r": data.dg_reason or '',
+    }
 
     if existing:
-        # 🔄 UPDATE EXISTING RECORD
-        existing.entered_by = current_user.id
-        existing.shift = data.shift if hasattr(data, 'shift') else 'A'
-        existing.operator_name = getattr(data, 'operator_name', None)
-        existing.sep_units = data.sep_units
-        existing.prep_units = data.prep_units
-        existing.solar_units = data.solar_units
-        existing.silo_units = data.silo_units
-        existing.doc_units = data.doc_units
-        existing.dsilo_units = data.dsilo_units
-        existing.acm_units = data.acm_units
-        existing.boiler_units = data.boiler_units
-        existing.chp_units = data.chp_units
-        existing.dm_units = data.dm_units
-        existing.ug_tank_units = data.ug_tank_units
-        existing.refinery_units = data.refinery_units
-        existing.etp_units = data.etp_units
-        existing.packing_units = data.packing_units
-        existing.admin_units = data.admin_units
-        existing.dg_units = data.dg_units
-        existing.msedcl_units = data.msedcl_units
-        existing.power_kvah = data.power_kvah
-        existing.power_factor = data.power_factor
-        existing.diesel_opening_stock = data.diesel_opening_stock
-        existing.diesel_received = data.diesel_received
-        existing.diesel_consumed = data.diesel_consumed
-        existing.dg_generated_units = data.dg_generated_units
-        existing.dg_reason = data.dg_reason
-        
-        # Voltages
-        existing.voltage_r_morning = data.voltage_r_morning
-        existing.voltage_y_morning = data.voltage_y_morning
-        existing.voltage_b_morning = data.voltage_b_morning
-        existing.voltage_r_evening = data.voltage_r_evening
-        existing.voltage_y_evening = data.voltage_y_evening
-        existing.voltage_b_evening = data.voltage_b_evening
-
-        # Safely assign Phase Currents if you added them to your schema
-        if hasattr(data, 'current_l1') and hasattr(existing, 'current_l1'):
-            existing.current_l1 = data.current_l1
-            existing.current_l2 = data.current_l2
-            existing.current_l3 = data.current_l3
-
+        db.execute(text("""
+            UPDATE power_consumption SET
+            sep_units=:sep, prep_units=:prep, solar_units=:solar,
+            silo_units=:silo, doc_units=:doc, dsilo_units=:dsilo,
+            acm_units=:acm, boiler_units=:boiler, chp_units=:chp,
+            dm_units=:dm, ug_tank_units=:ug, refinery_units=:ref,
+            etp_units=:etp, packing_units=:pack, admin_units=:admin,
+            dg_units=:dg, msedcl_units=:msedcl, power_kvah=:kvah,
+            power_factor=:pf, diesel_opening_stock=:d_open,
+            diesel_received=:d_recv, diesel_consumed=:d_cons,
+            dg_generated_units=:dg_gen, dg_reason=:dg_r
+            WHERE reading_date::text = :d
+        """), params)
         db.commit()
-        db.refresh(existing)
-        return {"message": "Power report updated successfully", "id": existing.id}
+        return {"message": "Power report updated", "id": existing['id']}
 
-    # ➕ CREATE NEW RECORD
-    report = models.PowerConsumption(
-        reading_date=data.reading_date,
-        entered_by=current_user.id,
-        sep_units=data.sep_units,
-        prep_units=data.prep_units,
-        solar_units=data.solar_units,
-        silo_units=data.silo_units,
-        doc_units=data.doc_units,
-        dsilo_units=data.dsilo_units,
-        acm_units=data.acm_units,
-        boiler_units=data.boiler_units,
-        chp_units=data.chp_units,
-        dm_units=data.dm_units,
-        ug_tank_units=data.ug_tank_units,
-        refinery_units=data.refinery_units,
-        etp_units=data.etp_units,
-        packing_units=data.packing_units,
-        admin_units=data.admin_units,
-        dg_units=data.dg_units,
-        msedcl_units=data.msedcl_units,
-        power_kvah=data.power_kvah,
-        power_factor=data.power_factor,
-        diesel_opening_stock=data.diesel_opening_stock,
-        diesel_received=data.diesel_received,
-        diesel_consumed=data.diesel_consumed,
-        dg_generated_units=data.dg_generated_units,
-        dg_reason=data.dg_reason,
-        voltage_r_morning=data.voltage_r_morning,
-        voltage_y_morning=data.voltage_y_morning,
-        voltage_b_morning=data.voltage_b_morning,
-        voltage_r_evening=data.voltage_r_evening,
-        voltage_y_evening=data.voltage_y_evening,
-        voltage_b_evening=data.voltage_b_evening,
-    )
-
-    # Safely assign Phase Currents if you added them to your schema
-    if hasattr(data, 'current_l1') and hasattr(models.PowerConsumption, 'current_l1'):
-        report.current_l1 = data.current_l1
-        report.current_l2 = data.current_l2
-        report.current_l3 = data.current_l3
-
-    db.add(report)
+    result = db.execute(text("""
+        INSERT INTO power_consumption (
+            reading_date, entered_by,
+            sep_units, prep_units, solar_units, silo_units, doc_units,
+            dsilo_units, acm_units, boiler_units, chp_units, dm_units,
+            ug_tank_units, refinery_units, etp_units, packing_units,
+            admin_units, dg_units, msedcl_units, power_kvah, power_factor,
+            diesel_opening_stock, diesel_received, diesel_consumed,
+            dg_generated_units, dg_reason
+        ) VALUES (
+            :d::date, :uid::uuid,
+            :sep, :prep, :solar, :silo, :doc,
+            :dsilo, :acm, :boiler, :chp, :dm,
+            :ug, :ref, :etp, :pack,
+            :admin, :dg, :msedcl, :kvah, :pf,
+            :d_open, :d_recv, :d_cons, :dg_gen, :dg_r
+        ) RETURNING id
+    """), params)
     db.commit()
-    db.refresh(report)
-    return {"message": "Power report submitted successfully", "id": report.id}
+    new_id = result.fetchone()[0]
+    return {"message": "Power report submitted", "id": new_id}
 
 @app.get("/power-consumption/today")
 def get_todays_power(
@@ -1126,48 +1093,36 @@ def export_monthly_coal_excel(
     )
 
 @app.get("/history/boiler")
-def history_boiler(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
+def history_boiler(year: int, month: int, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
     from sqlalchemy import text
     prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
-        "SELECT * FROM boiler_log_entries "
-        "WHERE log_date LIKE :prefix "
+        "SELECT * FROM boiler_log_entries WHERE log_date LIKE :p "
         "ORDER BY log_date ASC, log_time ASC"
-    ), {"prefix": prefix}).mappings().all()
+    ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 @app.get("/history/coal")
-def history_coal(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
+def history_coal(year: int, month: int, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
     from sqlalchemy import text
     prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
-        "SELECT * FROM daily_coal_steam "
-        "WHERE report_date LIKE :prefix "
+        "SELECT * FROM daily_coal_steam WHERE report_date::text LIKE :p "
         "ORDER BY report_date ASC"
-    ), {"prefix": prefix}).mappings().all()
+    ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 @app.get("/history/power")
-def history_power(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
+def history_power(year: int, month: int, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
     from sqlalchemy import text
     prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
-        "SELECT * FROM power_consumption "
-        "WHERE reading_date LIKE :prefix "
+        "SELECT * FROM power_consumption WHERE reading_date::text LIKE :p "
         "ORDER BY reading_date ASC"
-    ), {"prefix": prefix}).mappings().all()
+    ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
