@@ -34,9 +34,13 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
       reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
       dg_generated_units: '', dg_reason: '',
-      // 👇 Added the new voltage fields here 👇
+
+      // Voltages
       voltage_r_morning: '', voltage_y_morning: '', voltage_b_morning: '',
-      voltage_r_evening: '', voltage_y_evening: '', voltage_b_evening: ''
+      voltage_r_evening: '', voltage_y_evening: '', voltage_b_evening: '',
+
+      // Currents
+      current_l1: '', current_l2: '', current_l3: ''
     };
     SECTIONS.forEach(s => base[s.key] = '');
     return base;
@@ -63,11 +67,18 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
     setError('');
 
     const payload: any = { ...form };
-    const numFields = [...SECTIONS.map(s => s.key),
+    const numFields = [
+      ...SECTIONS.map(s => s.key),
       'power_kvah', 'power_factor', 'diesel_opening_stock',
-      'diesel_received', 'diesel_consumed', 'dg_generated_units'];
+      'diesel_received', 'diesel_consumed', 'dg_generated_units',
+      'voltage_r_morning', 'voltage_y_morning', 'voltage_b_morning',
+      'voltage_r_evening', 'voltage_y_evening', 'voltage_b_evening',
+      'current_l1', 'current_l2', 'current_l3'
+    ];
+
     numFields.forEach(f => {
-      payload[f] = payload[f] !== '' ? parseFloat(payload[f]) : 0;
+      // If it's empty, send null (or 0) so the backend doesn't crash
+      payload[f] = payload[f] !== '' && payload[f] !== undefined ? parseFloat(payload[f]) : 0;
     });
 
     try {
@@ -266,22 +277,22 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             <div style={s.field}>
               <label style={s.label}>L1R Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
-                value={form.voltage_l12}
-                onChange={e => set('voltage_l12', e.target.value)}
+                value={form.voltage_r_morning}
+                onChange={e => set('voltage_r_morning', e.target.value)}
                 placeholder="e.g. 374.7" />
             </div>
             <div style={s.field}>
               <label style={s.label}>L2Y Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
-                value={form.voltage_l23}
-                onChange={e => set('voltage_l23', e.target.value)}
+                value={form.voltage_y_morning}
+                onChange={e => set('voltage_y_morning', e.target.value)}
                 placeholder="e.g. 373.6" />
             </div>
             <div style={s.field}>
               <label style={s.label}>L3B Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
-                value={form.voltage_l31}
-                onChange={e => set('voltage_l31', e.target.value)}
+                value={form.voltage_b_morning}
+                onChange={e => set('voltage_b_morning', e.target.value)}
                 placeholder="e.g. 374.4" />
             </div>
           </div>
@@ -360,7 +371,7 @@ const s: Record<string, React.CSSProperties> = {
   field: { display: 'flex', flexDirection: 'column', gap: 4 },
   label: { fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' },
   input: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' },
-  select: {padding: '10px 12px',border: '1.5px solid #e0e0e0',borderRadius: 8,fontSize: 14,outline: 'none',background: '#fff',width: '100%',boxSizing: 'border-box' as const},
+  select: { padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%', boxSizing: 'border-box' as const },
   btn: { width: '100%', padding: '15px', background: '#0f3460', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
   btnDisabled: { width: '100%', padding: '15px', background: '#aaa', color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, cursor: 'not-allowed', marginTop: 8 },
   errorBox: { background: '#fff0f0', border: '1px solid #ffcccc', color: '#cc0000', padding: '12px 16px', borderRadius: 8, fontSize: 13, marginBottom: 10 },
