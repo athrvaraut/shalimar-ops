@@ -381,10 +381,8 @@ def submit_power(
     current_user: models.User = Depends(auth.require_role("hod", "operator", "assistant"))
 ):
     from sqlalchemy import text
-    
     date_str = str(data.reading_date)
-    
-    # Check existing
+
     existing = db.execute(text(
         "SELECT id FROM power_consumption WHERE reading_date::text = :d LIMIT 1"
     ), {"d": date_str}).mappings().fetchone()
@@ -1098,7 +1096,7 @@ def history_boiler(year: int, month: int, db: Session = Depends(get_db),
     from sqlalchemy import text
     prefix = f"{year}-{str(month).zfill(2)}%"
     results = db.execute(text(
-        "SELECT * FROM boiler_log_entries WHERE log_date LIKE :p "
+        "SELECT * FROM boiler_log_entries WHERE log_date::text LIKE :p "
         "ORDER BY log_date ASC, log_time ASC"
     ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
