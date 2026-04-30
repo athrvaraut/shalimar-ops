@@ -380,6 +380,58 @@ def submit_power(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.require_role("hod", "operator", "assistant"))
 ):
+    # 1. Check if a report for this date already exists
+    existing = db.query(models.PowerConsumption).filter(
+        models.PowerConsumption.reading_date == data.reading_date
+    ).first()
+
+    if existing:
+        # 🔄 UPDATE EXISTING RECORD
+        existing.entered_by = current_user.id
+        existing.sep_units = data.sep_units
+        existing.prep_units = data.prep_units
+        existing.solar_units = data.solar_units
+        existing.silo_units = data.silo_units
+        existing.doc_units = data.doc_units
+        existing.dsilo_units = data.dsilo_units
+        existing.acm_units = data.acm_units
+        existing.boiler_units = data.boiler_units
+        existing.chp_units = data.chp_units
+        existing.dm_units = data.dm_units
+        existing.ug_tank_units = data.ug_tank_units
+        existing.refinery_units = data.refinery_units
+        existing.etp_units = data.etp_units
+        existing.packing_units = data.packing_units
+        existing.admin_units = data.admin_units
+        existing.dg_units = data.dg_units
+        existing.msedcl_units = data.msedcl_units
+        existing.power_kvah = data.power_kvah
+        existing.power_factor = data.power_factor
+        existing.diesel_opening_stock = data.diesel_opening_stock
+        existing.diesel_received = data.diesel_received
+        existing.diesel_consumed = data.diesel_consumed
+        existing.dg_generated_units = data.dg_generated_units
+        existing.dg_reason = data.dg_reason
+        
+        # Voltages
+        existing.voltage_r_morning = data.voltage_r_morning
+        existing.voltage_y_morning = data.voltage_y_morning
+        existing.voltage_b_morning = data.voltage_b_morning
+        existing.voltage_r_evening = data.voltage_r_evening
+        existing.voltage_y_evening = data.voltage_y_evening
+        existing.voltage_b_evening = data.voltage_b_evening
+
+        # Safely assign Phase Currents if you added them to your schema
+        if hasattr(data, 'current_l1') and hasattr(existing, 'current_l1'):
+            existing.current_l1 = data.current_l1
+            existing.current_l2 = data.current_l2
+            existing.current_l3 = data.current_l3
+
+        db.commit()
+        db.refresh(existing)
+        return {"message": "Power report updated successfully", "id": existing.id}
+
+    # ➕ CREATE NEW RECORD
     report = models.PowerConsumption(
         reading_date=data.reading_date,
         entered_by=current_user.id,
@@ -407,8 +459,6 @@ def submit_power(
         diesel_consumed=data.diesel_consumed,
         dg_generated_units=data.dg_generated_units,
         dg_reason=data.dg_reason,
-        
-        # 👇 NEW VOLTAGE FIELDS 👇
         voltage_r_morning=data.voltage_r_morning,
         voltage_y_morning=data.voltage_y_morning,
         voltage_b_morning=data.voltage_b_morning,
@@ -416,10 +466,17 @@ def submit_power(
         voltage_y_evening=data.voltage_y_evening,
         voltage_b_evening=data.voltage_b_evening,
     )
+
+    # Safely assign Phase Currents if you added them to your schema
+    if hasattr(data, 'current_l1') and hasattr(models.PowerConsumption, 'current_l1'):
+        report.current_l1 = data.current_l1
+        report.current_l2 = data.current_l2
+        report.current_l3 = data.current_l3
+
     db.add(report)
     db.commit()
     db.refresh(report)
-    return {"message": "Power report submitted", "id": report.id}
+    return {"message": "Power report submitted successfully", "id": report.id}
 
 @app.get("/power-consumption/today")
 def get_todays_power(
