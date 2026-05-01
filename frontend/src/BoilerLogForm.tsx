@@ -178,19 +178,19 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     setLoading(true);
     setError('');
 
-    const payload: any = { ...form };
-    // Convert numeric strings to numbers, keep empty as null
-    const numericFields = [
-      'steam_pressure', 'steam_flow_sep', 'steam_flow_refl', 'drum_water_level',
-      'bed1_top_temp', 'bed1_bottom_temp', 'bed2_top_temp', 'bed2_bottom_temp',
-      'flue_gas_temp', 'coal_feed_bed1_hz', 'coal_feed_bed2_hz',
-      'id_fan_damper', 'fd_fan1_damper', 'fd_fan2_damper',
-      'booster_fan1', 'booster_fan2', 'gag_filter_temp',
-      'feed_water_temp', 'fd_pressure'
-    ];
-    numericFields.forEach(f => {
-      payload[f] = payload[f] !== '' ? parseFloat(payload[f]) : null;
-    });
+    const cleanPayload: any = { ...form };
+    
+    for (const key in cleanPayload) {
+      // Convert all completely empty text boxes to 'null'
+      if (cleanPayload[key] === "") {
+        cleanPayload[key] = null; 
+      }
+    }
+
+    // Protect fd_pressure so "300/300" doesn't get ruined by auto-number parsing
+    if (cleanPayload.fd_pressure !== null) {
+      cleanPayload.fd_pressure = String(cleanPayload.fd_pressure);
+    }
 
     try {
       const res = await fetch('https://shalimar-ops.onrender.com/boiler-log', {
@@ -199,7 +199,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(cleanPayload),
       });
 
       if (res.status === 409) {
@@ -211,7 +211,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
         setError(JSON.stringify(data.detail || 'Submission failed'));
       } else if (res.ok) {
 
-        if (form.coal_section_filled) {
+        if (!coalLocked) {
 
           try {
             const coalPayload = {
@@ -235,8 +235,9 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
             await fetch('https://shalimar-ops.onrender.com/daily-report', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify(payload),
+              body: JSON.stringify(coalPayload),
             });
+            setCoalLocked(true);
             // Silently succeeds or skips (upsert handles duplicate)
           } catch (err) {
             console.error("Coal summary failed:", err);
