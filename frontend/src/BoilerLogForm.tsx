@@ -390,20 +390,20 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
             </div>
           </div>
           <div style={s.row2}>
-            <NumInput label="SEP Steam Opening (KG) — auto from entries"
+            <NumInput label="SEP Steam Opening (KG)"
               value={form.steam_sep_opening} onChange={v => set('steam_sep_opening', v)}
-              disabled={coalLocked} hint="Auto: first SEP reading of day" />
-            <NumInput label="SEP Steam Closing (KG) — auto from entries"
+              disabled={coalLocked} />
+            <NumInput label="SEP Steam Closing (KG)"
               value={form.steam_sep_closing} onChange={v => set('steam_sep_closing', v)}
-              disabled={coalLocked} hint="Auto: last SEP reading of day" />
+              disabled={coalLocked} />
           </div>
           <div style={s.row2}>
-            <NumInput label="REFL Steam Opening (KG) — auto from entries"
+            <NumInput label="REFL Steam Opening (KG)"
               value={form.steam_refl_opening} onChange={v => set('steam_refl_opening', v)}
-              disabled={coalLocked} hint="Auto: first REFL reading of day" />
-            <NumInput label="REFL Steam Closing (KG) — auto from entries"
+              disabled={coalLocked} />
+            <NumInput label="REFL Steam Closing (KG)"
               value={form.steam_refl_closing} onChange={v => set('steam_refl_closing', v)}
-              disabled={coalLocked} hint="Auto: last REFL reading of day" />
+              disabled={coalLocked} />
           </div>
         </div>
 
