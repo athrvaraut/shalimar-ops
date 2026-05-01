@@ -709,12 +709,8 @@ def export_daily_boiler_excel(
     for r in [4, 12, 16]:
         ws.row_dimensions[r].height = 40
 
-    # Footer
-    ws.append([])
-    ws.append([])
-    for _ in range(4):
-        ws.append([])
-    footer_row = ws.max_row
+    # Footer (Explicitly placed on Row 21 so it never overwrites Row 17)
+    footer_row = 21
     ws.cell(footer_row, 2).value = f"Generated: {date}  |  HOD: {current_user.name}  |  Shalimar Plant Ops System"
     ws.cell(footer_row, 2).font = Font(italic=True, color="888888", size=9)
 
@@ -725,7 +721,7 @@ def export_daily_boiler_excel(
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=Daily_Boiler_Report_{date}.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename=Boiler_{date}.xlsx"}
     )
 
 @app.get("/daily-report/recent")
