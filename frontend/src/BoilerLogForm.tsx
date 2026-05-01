@@ -149,17 +149,15 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
 
     const payload: any = { ...form };
     // Convert numeric strings to numbers, keep empty as null
-    const numericFields = [
-      'steam_pressure', 'steam_flow_sep', 'steam_flow_refl', 'drum_water_level',
-      'bed1_top_temp', 'bed1_bottom_temp', 'bed2_top_temp', 'bed2_bottom_temp',
-      'flue_gas_temp', 'coal_feed_bed1_hz', 'coal_feed_bed2_hz',
-      'id_fan_damper', 'fd_fan1_damper', 'fd_fan2_damper',
-      'booster_fan1', 'booster_fan2', 'gag_filter_temp',
-      'feed_water_temp', 'fd_pressure'
-    ];
-    numericFields.forEach(f => {
-      payload[f] = payload[f] !== '' ? parseFloat(payload[f]) : null;
-    });
+    const cleanPayload: any = { ...form };
+    
+    // Loop through everything in the form. If a box was left completely blank,
+    // change it from an empty string ("") to 'null' so Python accepts it!
+    for (const key in cleanPayload) {
+      if (cleanPayload[key] === "") {
+        cleanPayload[key] = null; 
+      }
+    }
 
     try {
       const res = await fetch('https://shalimar-ops.onrender.com/boiler-log', {
@@ -168,7 +166,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(cleanPayload),
       });
 
       if (res.status === 409) {
