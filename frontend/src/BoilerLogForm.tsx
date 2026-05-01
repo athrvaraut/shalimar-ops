@@ -64,6 +64,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     coal_section_filled: false
   });
 
+  const [coalLocked, setCoalLocked] = useState(false);
   const [coalAlreadyFilled, setCoalAlreadyFilled] = useState(false);
   const [coalEditable, setCoalEditable] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -76,14 +77,14 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     const checkCoalData = async () => {
       const today = form.log_date;
       try {
-        const res = await fetch(`https://shalimar-ops.onrender.com/daily-report/${today}`, {
-          headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
-        });
+        const res = await fetch(
+          `https://shalimar-ops.onrender.com/daily-report/${today}`,
+          { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+        );
         if (res.ok) {
           const data = await res.json();
           if (data && data.opening_coal_stock) {
-            setCoalAlreadyFilled(true);
-            // Pre-fill the form with existing data
+            setCoalLocked(true);  // ← LOCK it
             set('coal_opening_stock', String(data.opening_coal_stock || ''));
             set('coal_arrival', String(data.coal_arrival_indian || ''));
             set('coal_thermic', String(data.coal_thermic || ''));
@@ -92,6 +93,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
             set('steam_sep_closing', String(data.steam_sep_closing || ''));
             set('steam_refl_opening', String(data.steam_refl_opening || ''));
             set('steam_refl_closing', String(data.steam_refl_closing || ''));
+            set('steam_pressure_ok', data.steam_pressure_ok as any);
           }
         }
       } catch { }
@@ -117,6 +119,35 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     };
     fetchPrevClosing();
   }, [form.log_date]);
+
+  useEffect(() => {
+    const autoFillSteam = async () => {
+      if (coalLocked) return; // already filled
+      const today = form.log_date;
+      try {
+        const res = await fetch(
+          `https://shalimar-ops.onrender.com/boiler-log/date/${today}`,
+          { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+        );
+        if (res.ok) {
+          const logs = await res.json();
+          if (Array.isArray(logs) && logs.length > 0) {
+            const sepFlows = logs.map((l: any) => l.steam_flow_sep).filter(Boolean);
+            const reflFlows = logs.map((l: any) => l.steam_flow_refl).filter(Boolean);
+            if (sepFlows.length > 0) {
+              set('steam_sep_opening', String(sepFlows[0]));
+              set('steam_sep_closing', String(sepFlows[sepFlows.length - 1]));
+            }
+            if (reflFlows.length > 0) {
+              set('steam_refl_opening', String(reflFlows[0]));
+              set('steam_refl_closing', String(reflFlows[reflFlows.length - 1]));
+            }
+          }
+        }
+      } catch { }
+    };
+    autoFillSteam();
+  }, [form.log_date, coalLocked]);
 
   const validate = () => {
     const w: string[] = [];
@@ -149,15 +180,17 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
 
     const payload: any = { ...form };
     // Convert numeric strings to numbers, keep empty as null
-    const cleanPayload: any = { ...form };
-    
-    // Loop through everything in the form. If a box was left completely blank,
-    // change it from an empty string ("") to 'null' so Python accepts it!
-    for (const key in cleanPayload) {
-      if (cleanPayload[key] === "") {
-        cleanPayload[key] = null; 
-      }
-    }
+    const numericFields = [
+      'steam_pressure', 'steam_flow_sep', 'steam_flow_refl', 'drum_water_level',
+      'bed1_top_temp', 'bed1_bottom_temp', 'bed2_top_temp', 'bed2_bottom_temp',
+      'flue_gas_temp', 'coal_feed_bed1_hz', 'coal_feed_bed2_hz',
+      'id_fan_damper', 'fd_fan1_damper', 'fd_fan2_damper',
+      'booster_fan1', 'booster_fan2', 'gag_filter_temp',
+      'feed_water_temp', 'fd_pressure'
+    ];
+    numericFields.forEach(f => {
+      payload[f] = payload[f] !== '' ? parseFloat(payload[f]) : null;
+    });
 
     try {
       const res = await fetch('https://shalimar-ops.onrender.com/boiler-log', {
@@ -166,7 +199,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`
         },
-        body: JSON.stringify(cleanPayload),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 409) {
@@ -202,7 +235,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
             await fetch('https://shalimar-ops.onrender.com/daily-report', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify(coalPayload),
+              body: JSON.stringify(payload),
             });
             // Silently succeeds or skips (upsert handles duplicate)
           } catch (err) {
@@ -312,66 +345,65 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
         </div>
 
         {/* Move this ABOVE the Steam Parameters section, right after Shift Details */}
-        <div style={{ ...s.section, border: '2px solid #e0f2fe', background: '#f0f9ff' }}>
+        <div style={{ ...s.section, border: '2px solid #e0f2fe', background: coalLocked ? '#f0f9ff' : '#fff' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 8, borderBottom: '1px solid #e0f2fe' }}>
-            <div style={s.sectionTitle}>🪨 Daily Coal & Steam Summary
+            <div style={s.sectionTitle}>
+              🪨 Daily Coal & Steam Summary
               <span style={{ fontSize: 10, fontWeight: 400, color: '#666', marginLeft: 8 }}>Fill once per day (any shift)</span>
             </div>
-            {coalAlreadyFilled && (
-              <button type="button" onClick={() => setCoalEditable(true)}
-                style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+            {coalLocked && (
+              <button type="button" onClick={() => setCoalLocked(false)}
+                style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 ✏️ Modify
               </button>
             )}
           </div>
 
-          {/* Always visible — no checkbox */}
+          {coalLocked && (
+            <div style={{ background: '#d1fae5', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#166534' }}>
+              ✅ Coal data already submitted for {form.log_date}. Click Modify to edit.
+            </div>
+          )}
+
+          {/* All coal fields with disabled={coalLocked} */}
           <div style={s.row2}>
-            <NumInput label="Opening Coal Stock (MT) *auto from prev day"
-              value={form.coal_opening_stock} onChange={v => set('coal_opening_stock', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
-            <NumInput label="Coal Arrival Indian (MT)"
-              value={form.coal_arrival} onChange={v => set('coal_arrival', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="Opening Coal Stock (MT)" value={form.coal_opening_stock}
+              onChange={v => set('coal_opening_stock', v)} disabled={coalLocked} />
+            <NumInput label="Coal Arrival Indian (MT)" value={form.coal_arrival}
+              onChange={v => set('coal_arrival', v)} disabled={coalLocked} />
           </div>
           <div style={s.row3}>
-            <NumInput label="Coal Thermic Boiler (MT)"
-              value={form.coal_thermic} onChange={v => set('coal_thermic', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
-            <NumInput label="Coal Bunker (%)"
-              value={form.coal_bunker_pct} onChange={v => set('coal_bunker_pct', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="Coal Thermic Boiler (MT)" value={form.coal_thermic}
+              onChange={v => set('coal_thermic', v)} disabled={coalLocked} />
+            <NumInput label="Coal Bunker (%)" value={form.coal_bunker_pct}
+              onChange={v => set('coal_bunker_pct', v)} disabled={coalLocked} />
             <div style={s.field}>
               <label style={s.label}>Steam Pressure OK?</label>
-              <select style={s.select} value={(form.steam_pressure_ok as boolean) ? 'yes' : 'no'}
+              <select style={{ ...s.select, opacity: coalLocked ? 0.6 : 1 }}
+                value={(form.steam_pressure_ok as boolean) ? 'yes' : 'no'}
                 onChange={e => set('steam_pressure_ok', e.target.value === 'yes' as any)}
-                disabled={coalAlreadyFilled && !coalEditable}>
+                disabled={coalLocked}>
                 <option value="yes">Yes — Normal</option>
                 <option value="no">No — Problem</option>
               </select>
             </div>
           </div>
           <div style={s.row2}>
-            <NumInput label="SEP Steam Opening (KG)"
+            <NumInput label="SEP Steam Opening (KG) — auto from entries"
               value={form.steam_sep_opening} onChange={v => set('steam_sep_opening', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
-            <NumInput label="SEP Steam Closing (KG)"
+              disabled={coalLocked} hint="Auto: first SEP reading of day" />
+            <NumInput label="SEP Steam Closing (KG) — auto from entries"
               value={form.steam_sep_closing} onChange={v => set('steam_sep_closing', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
+              disabled={coalLocked} hint="Auto: last SEP reading of day" />
           </div>
           <div style={s.row2}>
-            <NumInput label="REFL Steam Opening (KG)"
+            <NumInput label="REFL Steam Opening (KG) — auto from entries"
               value={form.steam_refl_opening} onChange={v => set('steam_refl_opening', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
-            <NumInput label="REFL Steam Closing (KG)"
+              disabled={coalLocked} hint="Auto: first REFL reading of day" />
+            <NumInput label="REFL Steam Closing (KG) — auto from entries"
               value={form.steam_refl_closing} onChange={v => set('steam_refl_closing', v)}
-              disabled={coalAlreadyFilled && !coalEditable} />
+              disabled={coalLocked} hint="Auto: last REFL reading of day" />
           </div>
-          {coalAlreadyFilled && !coalEditable && (
-            <div style={{ fontSize: 11, color: '#059669', marginTop: 6 }}>
-              ✅ Coal data already filled for today. Click Modify to edit.
-            </div>
-          )}
         </div>
 
         {/* Steam Parameters */}
@@ -499,17 +531,16 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
 function NumInput({ label, value, onChange, hint, warn, disabled }: {
   label: string; value: string;
   onChange: (v: string) => void;
-  hint?: string; warn?: boolean;
-  disabled?: boolean;
+  hint?: string; warn?: boolean; disabled?: boolean;
 }) {
   return (
     <div style={s.field}>
       <label style={s.label}>{label}{hint && <span style={s.hint}> · {hint}</span>}</label>
       <input
-        style={{ ...s.input, ...(warn ? s.inputWarn : {}) }}
+        style={{ ...s.input, ...(warn ? s.inputWarn : {}), ...(disabled ? { background: '#f0f9ff', opacity: 0.7 } : {}) }}
         type="number" step="any" value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="—"
+        onChange={e => !disabled && onChange(e.target.value)}
+        placeholder="—" disabled={disabled}
       />
     </div>
   );

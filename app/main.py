@@ -1190,6 +1190,16 @@ def get_prev_closing(date: str, db: Session = Depends(get_db),
     ), {"d": prev_date}).mappings().fetchone()
     return {"closing_stock": result['closing_stock'] if result else None, "date": prev_date}
 
+@app.get("/boiler-log/date/{date}")
+def get_logs_by_date(date: str, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    from sqlalchemy import text
+    results = db.execute(text(
+        "SELECT * FROM boiler_log_entries WHERE log_date::text = :d "
+        "ORDER BY log_time ASC"
+    ), {"d": date}).mappings().all()
+    return [dict(r) for r in results]
+
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
 @app.get("/")

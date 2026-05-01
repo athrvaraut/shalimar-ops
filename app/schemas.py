@@ -62,7 +62,7 @@ class BoilerLogCreate(BaseModel):
     gag_filter_temp: Optional[float] = None
     breakdown_problem: Optional[str] = None
     feed_water_temp: Optional[float] = None
-    fd_pressure: Optional[float] = None
+    fd_pressure: Optional[str] = None
     remarks: Optional[str] = None
     coal_opening_stock: Optional[float] = None
     coal_received: Optional[float] = None           # ← 4 spaces
