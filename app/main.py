@@ -367,12 +367,23 @@ def get_daily_report(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    report = db.query(models.DailyCoalSteam).filter(
-        models.DailyCoalSteam.report_date == date
-    ).first()
-    if not report:
+    from sqlalchemy import text
+    from fastapi import HTTPException
+    
+    # Using ::date forces strict calendar matching, completely eliminating 
+    # the timezone bug that was causing it to fetch yesterday's data!
+    result = db.execute(text("""
+        SELECT * FROM daily_coal_steam 
+        WHERE report_date::date = :d::date 
+        LIMIT 1
+    """), {"d": date}).mappings().fetchone()
+
+    if not result:
+        # Throwing 404 is perfect here. It tells React: 
+        # "Today is empty! Keep the form unlocked!"
         raise HTTPException(status_code=404, detail="No report found for this date")
-    return report
+        
+    return dict(result)
 
 @app.post("/power-consumption")
 def submit_power(
