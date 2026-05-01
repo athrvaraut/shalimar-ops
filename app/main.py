@@ -468,10 +468,9 @@ def export_daily_boiler_excel(
     
     # Pull coal/steam from BOTH tables — boiler_log_entries first, fallback to daily_coal_steam
     coal_result = db.execute(text(
-        "SELECT * FROM boiler_log_entries "
-        "WHERE log_date::text = :date AND coal_opening_stock IS NOT NULL "
-        "ORDER BY id DESC LIMIT 1"
+        "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
     ), {"date": date}).mappings().fetchone()
+    report = dict(coal_result) if coal_result else None
     
     # If not in boiler_log_entries, check daily_coal_steam
     if not coal_result:
@@ -482,10 +481,58 @@ def export_daily_boiler_excel(
     report = dict(coal_result) if coal_result else None
     
     logs = db.execute(text(
-        "SELECT * FROM boiler_log_entries "
-        "WHERE log_date::text = :date ORDER BY shift ASC, log_time ASC"
+        "SELECT * FROM boiler_log_entries WHERE log_date::text = :date "
+        "ORDER BY log_time ASC"
     ), {"date": date}).mappings().all()
     logs = [dict(r) for r in logs]
+
+    # ── AUTO-CALCULATE from boiler entries ──────────────────
+    sep_flows = [l['steam_flow_sep'] for l in logs if l.get('steam_flow_sep')]
+    refl_flows = [l['steam_flow_refl'] for l in logs if l.get('steam_flow_refl')]
+    feed_temps = [l['feed_water_temp'] for l in logs if l.get('feed_water_temp')]
+    bed1_hz = [l['coal_feed_bed1_hz'] for l in logs if l.get('coal_feed_bed1_hz')]
+    bed2_hz = [l['coal_feed_bed2_hz'] for l in logs if l.get('coal_feed_bed2_hz')]
+
+    sep_opening = sep_flows[0] if sep_flows else None
+    sep_closing = sep_flows[-1] if sep_flows else None
+    refl_opening = refl_flows[0] if refl_flows else None
+    refl_closing = refl_flows[-1] if refl_flows else None
+
+    sep_consumed = (sep_closing - sep_opening) if (sep_closing and sep_opening) else None
+    refl_consumed = (refl_closing - refl_opening) if (refl_closing and refl_opening) else None
+    total_steam = (sep_consumed + refl_consumed) if (sep_consumed and refl_consumed) else None
+
+    avg_feed_water = round(sum(feed_temps) / len(feed_temps), 1) if feed_temps else None
+
+    all_hz = bed1_hz + bed2_hz
+    avg_feeding = round(sum(all_hz) / len(all_hz), 2) if all_hz else None
+
+    # Coal for Steam = avg_feeding * 60 * 24 (in KG, stays as KG for display)
+    coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
+
+    # Get manual coal data from report (or from boiler entries)
+    opening_stock = report.get('opening_coal_stock') if report else None
+    arrival_ind = report.get('coal_arrival_indian') if report else None
+    arrival_imp = report.get('coal_arrival_imported', 0) if report else 0
+    coal_thermic = report.get('coal_thermic', 0) if report else 0
+    coal_bunker = report.get('coal_bunker_pct') if report else None
+    steam_pressure_ok = report.get('steam_pressure_ok', True) if report else True
+
+    # Calculate coal SEP and REFL
+    # E8: Coal SEP = steam_sep_consumed (KG) / coal_for_steam * coal_total... 
+    # Actually from father's formula: Coal consumed SEP is calculated differently
+    # Using the C/S ratio approach: coal_sep_mt = sep_consumed / (cs_ratio * 1000)
+    cs_ratio = report.get('cs_ratio') if report else None
+    
+    # If we have report data, use it. Otherwise calculate from entries
+    coal_consumed_sep = report.get('coal_consumed_sep') if report else None
+    coal_consumed_refinery = report.get('coal_consumed_refinery') if report else None
+    total_coal = report.get('total_coal_consumed') if report else None
+    closing_stock = report.get('closing_stock') if report else None
+
+    # If no cs_ratio in report but we have total_steam and coal data
+    if not cs_ratio and total_steam and total_coal and total_coal > 0:
+        cs_ratio = round(total_steam / (total_coal * 1000), 3)  # steam KG / coal MT*1000
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -577,18 +624,18 @@ def export_daily_boiler_excel(
     # ROW 8 - Data
     cell(8, 2, "COAL BUNKER STATUS", bold, align=left, b=border)
     cell(8, 3, None, b=border)
-    cell(8, 4, report.get('coal_bunker_pct') if report else None, align=center, b=border)
+    cell(8, 4, coal_bunker, align=center, b=border)
     cell(8, 5, None, b=border)
     cell(8, 6, None, b=border)
     cell(8, 7, None, b=border)
     cell(8, 8, None, b=border)
-    cell(8, 9, date_display, align=center, b=border)
+    cell(8, 9, coal_for_steam, Font(bold=True), align=center, b=border)
 
     # ROW 9 - Pressure
     cell(9, 2, "STEAM PRESSURE PROBLEM", bold, align=left, b=border)
     cell(9, 3, None, b=border)
-    sp_val = "NO" if (report and report.get('steam_pressure_ok')) else "YES ⚠️"
-    sp_fill = green_fill if (report and report.get('steam_pressure_ok')) else PatternFill("solid", fgColor="FADBD8")
+    sp_val = "NO" if steam_pressure_ok else "YES ⚠️"
+    sp_fill = green_fill if steam_pressure_ok else PatternFill("solid", fgColor="FADBD8")
     cell(9, 4, sp_val, Font(bold=True), sp_fill, center, border)
     cell(9, 5, None, b=border)
 
@@ -604,18 +651,21 @@ def export_daily_boiler_excel(
         "AVERAGE FEEDING", ""
     ]
     for i, h in enumerate(steam_headers, 2):
-        cell(12, i, h, bold, blue_fill, center, border)
+        if h:
+            cell(12, i, h, bold, blue_fill, center, border)
+        else:
+            cell(12, i, "", None, blue_fill, None, border)
 
     # FIXED ROW 13 - Shifts data to Col 7 (G)
     if report:
-        cell(13, 2, report.get('steam_sep_opening'), align=center, b=border)
-        cell(13, 3, report.get('steam_sep_closing'), align=center, b=border)
-        cell(13, 4, None, align=center, b=border) # Empty D
-        cell(13, 5, report.get('steam_sep_consumed'), Font(bold=True), yellow_fill, center, border)
-        cell(13, 6, None, align=center, b=border) # Empty F
-        cell(13, 7, report.get('feed_water_temp'), align=center, b=border)
-        cell(13, 8, None, align=center, b=border) # Empty H
-        cell(13, 9, None, align=center, b=border) # Empty I
+        cell(13, 2, sep_opening, align=center, b=border)
+        cell(13, 3, sep_closing, align=center, b=border)
+        cell(13, 4, None, align=center, b=border)
+        cell(13, 5, sep_consumed, Font(bold=True), yellow_fill, center, border)
+        cell(13, 6, None, align=center, b=border)
+        cell(13, 7, avg_feed_water, align=center, b=border)
+        cell(13, 8, None, align=center, b=border)
+        cell(13, 9, avg_feeding, align=center, b=border)
 
     ws.append([])  # row 14
 
@@ -629,20 +679,23 @@ def export_daily_boiler_excel(
         "STEAM TO COAL RATIO", ""
     ]
     for i, h in enumerate(refl_headers, 2):
-        cell(16, i, h, bold, blue_fill, center, border)
+        if h:
+            cell(16, i, h, bold, blue_fill, center, border)
+        else:
+            cell(16, i, "", None, blue_fill, None, border)
 
     # FIXED ROW 17 - Shifts Total Steam to 7 (G) and CS Ratio to 9 (I)
     if report:
-        cell(17, 2, report.get('steam_refl_opening'), align=center, b=border)
-        cell(17, 3, report.get('steam_refl_closing'), align=center, b=border)
-        cell(17, 4, None, align=center, b=border) # Empty D
-        cell(17, 5, report.get('steam_refl_consumed'), Font(bold=True), yellow_fill, center, border)
-        cell(17, 6, None, align=center, b=border) # Empty F
-        cell(17, 7, report.get('total_steam'), Font(bold=True), yellow_fill, center, border)
-        cell(17, 8, None, align=center, b=border) # Empty H
-        cs_ratio_val = report.get('cs_ratio') or 0
-        cs_fill = green_fill if (cs_ratio_val and 5.0 <= float(cs_ratio_val) <= 5.6) else PatternFill("solid", fgColor="FADBD8")
-        cell(17, 9, cs_ratio_val, Font(bold=True), cs_fill, center, border)
+        cell(17, 2, refl_opening, align=center, b=border)
+        cell(17, 3, refl_closing, align=center, b=border)
+        cell(17, 4, None, align=center, b=border)
+        cell(17, 5, refl_consumed, Font(bold=True), yellow_fill, center, border)
+        cell(17, 6, None, align=center, b=border)
+        cell(17, 7, total_steam, Font(bold=True), yellow_fill, center, border)
+        cell(17, 8, None, align=center, b=border)
+        cs_val = cs_ratio or 0
+        cs_fill = green_fill if (cs_val and 5.0 <= float(cs_val) <= 5.6) else PatternFill("solid", fgColor="FADBD8")
+        cell(17, 9, cs_val, Font(bold=True), cs_fill, center, border)
 
     # Column widths matching father's layout
     col_widths = {
@@ -1122,6 +1175,20 @@ def history_power(year: int, month: int, db: Session = Depends(get_db),
         "ORDER BY reading_date ASC"
     ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
+
+@app.get("/daily-report/closing/{date}")
+def get_prev_closing(date: str, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
+    try:
+        prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return {"closing_stock": None}
+    result = db.execute(text(
+        "SELECT closing_stock FROM daily_coal_steam WHERE report_date::text = :d LIMIT 1"
+    ), {"d": prev_date}).mappings().fetchone()
+    return {"closing_stock": result['closing_stock'] if result else None, "date": prev_date}
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 

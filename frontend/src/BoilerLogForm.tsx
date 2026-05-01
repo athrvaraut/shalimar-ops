@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface BoilerLogFormProps {
   token: string;
@@ -64,11 +64,59 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     coal_section_filled: false
   });
 
+  const [coalAlreadyFilled, setCoalAlreadyFilled] = useState(false);
+  const [coalEditable, setCoalEditable] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [duplicateId, setDuplicateId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const checkCoalData = async () => {
+      const today = form.log_date;
+      try {
+        const res = await fetch(`https://shalimar-ops.onrender.com/daily-report/${today}`, {
+          headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.opening_coal_stock) {
+            setCoalAlreadyFilled(true);
+            // Pre-fill the form with existing data
+            set('coal_opening_stock', String(data.opening_coal_stock || ''));
+            set('coal_arrival', String(data.coal_arrival_indian || ''));
+            set('coal_thermic', String(data.coal_thermic || ''));
+            set('coal_bunker_pct', String(data.coal_bunker_pct || ''));
+            set('steam_sep_opening', String(data.steam_sep_opening || ''));
+            set('steam_sep_closing', String(data.steam_sep_closing || ''));
+            set('steam_refl_opening', String(data.steam_refl_opening || ''));
+            set('steam_refl_closing', String(data.steam_refl_closing || ''));
+          }
+        }
+      } catch { }
+    };
+    checkCoalData();
+  }, [form.log_date]);
+
+  useEffect(() => {
+    const fetchPrevClosing = async () => {
+      if (!form.log_date) return;
+      try {
+        const res = await fetch(
+          `https://shalimar-ops.onrender.com/daily-report/closing/${form.log_date}`,
+          { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.closing_stock && !form.coal_opening_stock) {
+            set('coal_opening_stock', String(data.closing_stock));
+          }
+        }
+      } catch { }
+    };
+    fetchPrevClosing();
+  }, [form.log_date]);
 
   const validate = () => {
     const w: string[] = [];
@@ -82,7 +130,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     return w;
   };
 
-  const set = (field: string, val: string) =>
+  const set = (field: string, val: any) =>
     setForm(prev => ({ ...prev, [field]: val }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -265,6 +313,69 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
           </div>
         </div>
 
+        {/* Move this ABOVE the Steam Parameters section, right after Shift Details */}
+        <div style={{ ...s.section, border: '2px solid #e0f2fe', background: '#f0f9ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 8, borderBottom: '1px solid #e0f2fe' }}>
+            <div style={s.sectionTitle}>🪨 Daily Coal & Steam Summary
+              <span style={{ fontSize: 10, fontWeight: 400, color: '#666', marginLeft: 8 }}>Fill once per day (any shift)</span>
+            </div>
+            {coalAlreadyFilled && (
+              <button type="button" onClick={() => setCoalEditable(true)}
+                style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                ✏️ Modify
+              </button>
+            )}
+          </div>
+
+          {/* Always visible — no checkbox */}
+          <div style={s.row2}>
+            <NumInput label="Opening Coal Stock (MT) *auto from prev day"
+              value={form.coal_opening_stock} onChange={v => set('coal_opening_stock', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="Coal Arrival Indian (MT)"
+              value={form.coal_arrival} onChange={v => set('coal_arrival', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+          </div>
+          <div style={s.row3}>
+            <NumInput label="Coal Thermic Boiler (MT)"
+              value={form.coal_thermic} onChange={v => set('coal_thermic', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="Coal Bunker (%)"
+              value={form.coal_bunker_pct} onChange={v => set('coal_bunker_pct', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+            <div style={s.field}>
+              <label style={s.label}>Steam Pressure OK?</label>
+              <select style={s.select} value={(form.steam_pressure_ok as boolean) ? 'yes' : 'no'}
+                onChange={e => set('steam_pressure_ok', e.target.value === 'yes' as any)}
+                disabled={coalAlreadyFilled && !coalEditable}>
+                <option value="yes">Yes — Normal</option>
+                <option value="no">No — Problem</option>
+              </select>
+            </div>
+          </div>
+          <div style={s.row2}>
+            <NumInput label="SEP Steam Opening (KG)"
+              value={form.steam_sep_opening} onChange={v => set('steam_sep_opening', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="SEP Steam Closing (KG)"
+              value={form.steam_sep_closing} onChange={v => set('steam_sep_closing', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+          </div>
+          <div style={s.row2}>
+            <NumInput label="REFL Steam Opening (KG)"
+              value={form.steam_refl_opening} onChange={v => set('steam_refl_opening', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+            <NumInput label="REFL Steam Closing (KG)"
+              value={form.steam_refl_closing} onChange={v => set('steam_refl_closing', v)}
+              disabled={coalAlreadyFilled && !coalEditable} />
+          </div>
+          {coalAlreadyFilled && !coalEditable && (
+            <div style={{ fontSize: 11, color: '#059669', marginTop: 6 }}>
+              ✅ Coal data already filled for today. Click Modify to edit.
+            </div>
+          )}
+        </div>
+
         {/* Steam Parameters */}
         <div style={s.section}>
           <div style={s.sectionTitle}>♨️ Steam Parameters</div>
@@ -355,70 +466,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               rows={2} />
           </div>
         </div>
-        {/* Coal & Steam Daily Summary — Optional, filled once per day */}
-        <div style={{ ...s.section, border: '2px solid #e0f2fe', background: '#f0f9ff' }}>
-          <div style={s.sectionTitle}>
-            🪨 Daily Coal & Steam Summary
-            <span style={{ fontSize: 10, fontWeight: 400, color: '#666', marginLeft: 8 }}>
-              Fill once per day (any shift)
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <input type="checkbox"
-              checked={!!form.coal_section_filled}
-              onChange={e => set('coal_section_filled', e.target.checked as any)}
-              id="coal_toggle" />
-            <label htmlFor="coal_toggle" style={{ fontSize: 13, cursor: 'pointer' }}>
-              Fill Coal & Steam data for today
-            </label>
-          </div>
-          {form.coal_section_filled && (
-            <>
-              <div style={s.row3}>
-                <NumInput label="Opening Coal Stock (MT)" value={form.coal_opening_stock}
-                  onChange={v => set('coal_opening_stock', v)} />
-                {/* --- CHANGED: Combined into a single Coal Arrival field --- */}
-                <NumInput label="Coal Arrival (MT)" value={form.coal_arrival}
-                  onChange={v => set('coal_arrival', v)} />
-              </div>
-              <div style={s.row3}>
-                <NumInput label="Coal Consumed SEP (MT)" value={form.coal_consumed_sep}
-                  onChange={v => set('coal_consumed_sep', v)} />
-                <NumInput label="Coal Consumed Refinery (MT)" value={form.coal_consumed_refinery}
-                  onChange={v => set('coal_consumed_refinery', v)} />
-                <NumInput label="Coal Thermic Boiler (MT)" value={form.coal_thermic}
-                  onChange={v => set('coal_thermic', v)} />
-              </div>
-              <div style={s.row2}>
-                <NumInput label="SEP Steam Opening (KG)" value={form.steam_sep_opening}
-                  onChange={v => set('steam_sep_opening', v)} />
-                <NumInput label="SEP Steam Closing (KG)" value={form.steam_sep_closing}
-                  onChange={v => set('steam_sep_closing', v)} />
-              </div>
-              <div style={s.row2}>
-                <NumInput label="REFL Steam Opening (KG)" value={form.steam_refl_opening}
-                  onChange={v => set('steam_refl_opening', v)} />
-                <NumInput label="REFL Steam Closing (KG)" value={form.steam_refl_closing}
-                  onChange={v => set('steam_refl_closing', v)} />
-              </div>
-              <div style={s.row3}>
-                <NumInput label="Feed Water Temp (°C)" value={form.feed_water_temp_daily}
-                  onChange={v => set('feed_water_temp_daily', v)} />
-                <NumInput label="Coal Bunker (%)" value={form.coal_bunker_pct}
-                  onChange={v => set('coal_bunker_pct', v)} />
-                <div style={s.field}>
-                  <label style={s.label}>Steam Pressure OK?</label>
-                  <select style={s.select}
-                    value={form.steam_pressure_ok ? 'yes' : 'no'}
-                    onChange={e => set('steam_pressure_ok', (e.target.value === 'yes') as any)}>
-                    <option value="yes">Yes — Normal</option>
-                    <option value="no">No — Problem</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+
         {warnings.length > 0 && (
           <div style={{
             background: '#fff7ed', border: '1px solid #fed7aa',
@@ -450,10 +498,11 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
 }
 
 // Reusable numeric input
-function NumInput({ label, value, onChange, hint, warn }: {
+function NumInput({ label, value, onChange, hint, warn, disabled }: {
   label: string; value: string;
   onChange: (v: string) => void;
   hint?: string; warn?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div style={s.field}>

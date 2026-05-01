@@ -49,6 +49,14 @@ export default function HODDashboard({ token, onBack }: {
   const [message] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedPowerId, setExpandedPowerId] = useState<number | null>(null);
+  const [loadingMsg, setLoadingMsg] = useState('Loading...');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadingMsg('Waking up server (first load takes ~30 sec)...');
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const authHeader = { 'Authorization': `Bearer ${token || localStorage.getItem('token')}` };
 
@@ -151,8 +159,9 @@ export default function HODDashboard({ token, onBack }: {
           <div style={s.sectionInfo}>
             📋 Today's boiler log entries — submitted automatically by operators every 2 hours
           </div>
-          {loading ? <div style={s.empty}>Loading...</div>
-            : boilerEntries.length === 0 ? (
+          {loading ? (
+            <div style={s.empty}>{loadingMsg}</div>
+          ) : boilerEntries.length === 0 ? (
               <div style={s.empty}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No entries today</div>
@@ -225,8 +234,9 @@ export default function HODDashboard({ token, onBack }: {
       {/* ── POWER ── */}
       {tab === 'power' && (
         <div style={s.content}>
-          {loading ? <div style={s.empty}>Loading...</div>
-            : powerReports.length === 0 ? <div style={s.empty}>No power reports found</div>
+          {loading ? (
+            <div style={s.empty}>{loadingMsg}</div>
+          ) : powerReports.length === 0 ? <div style={s.empty}>No power reports found</div>
               : powerReports.map((r: any) => (
                 <div key={r.id} style={s.card}>
                   <div style={{ ...s.cardHeader, cursor: 'pointer' }}

@@ -13,8 +13,24 @@ function App() {
   );
 
   useEffect(() => {
-    // Wake up Render backend (free tier spins down)
+    // Wake up Render backend
     fetch('https://shalimar-ops.onrender.com/').catch(() => { });
+
+    // Global 401 auto-logout
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        const url = args[0]?.toString() || '';
+        if (url.includes('shalimar-ops.onrender.com') && !url.includes('auth/login')) {
+          localStorage.clear();
+          setToken(null);
+          setUserRole(null);
+        }
+      }
+      return response;
+    };
+    return () => { window.fetch = originalFetch; };
   }, []);
 
   const handleLogin = (newToken: string, role: string) => {
