@@ -526,15 +526,30 @@ def export_daily_boiler_excel(
     # Using the C/S ratio approach: coal_sep_mt = sep_consumed / (cs_ratio * 1000)
     cs_ratio = report.get('cs_ratio') if report else None
     
-    # If we have report data, use it. Otherwise calculate from entries
-    coal_consumed_sep = report.get('coal_consumed_sep') if report else None
-    coal_consumed_refinery = report.get('coal_consumed_refinery') if report else None
-    total_coal = report.get('total_coal_consumed') if report else None
-    closing_stock = report.get('closing_stock') if report else None
+   # E5: Coal SEP (MT)
+    if sep_consumed and cs_ratio and float(cs_ratio) > 0:
+        auto_coal_sep = round(sep_consumed / (float(cs_ratio) * 1000), 3)
+    else:
+        auto_coal_sep = report.get('coal_consumed_sep') if report else None
 
-    # If no cs_ratio in report but we have total_steam and coal data
-    if not cs_ratio and total_steam and total_coal and total_coal > 0:
-        cs_ratio = round(total_steam / (total_coal * 1000), 3)  # steam KG / coal MT*1000
+    # F5: Coal REFL (MT)
+    coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam else None
+    if coal_for_steam_mt is not None and auto_coal_sep is not None:
+        auto_coal_refl = round(coal_for_steam_mt - auto_coal_sep, 3)
+    else:
+        auto_coal_refl = report.get('coal_consumed_refinery') if report else None
+
+    # H5: Total Coal
+    if auto_coal_sep is not None and auto_coal_refl is not None:
+        auto_total_coal = round(auto_coal_sep + auto_coal_refl + float(coal_thermic or 0), 3)
+    else:
+        auto_total_coal = report.get('total_coal_consumed') if report else None
+
+    # I5: Closing Stock
+    if opening_stock is not None and auto_total_coal is not None:
+        auto_closing = round(float(opening_stock) + float(arrival_ind or 0) + float(arrival_imp or 0) - auto_total_coal, 3)
+    else:
+        auto_closing = report.get('closing_stock') if report else None
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -599,16 +614,21 @@ def export_daily_boiler_excel(
     for i, h in enumerate(headers_coal, 2):
         cell(4, i, h, bold, blue_fill, center, border)
 
-    # ROW 5 - Coal values
-    if report:
-        coal_vals = [
-            report.get('opening_coal_stock'), report.get('coal_arrival_indian'),
-        report.get('coal_arrival_imported'), report.get('coal_consumed_sep'),
-        report.get('coal_consumed_refinery'), report.get('coal_thermic'),
-        report.get('total_coal_consumed'), report.get('closing_stock'), ""
+    # ROW 5 - Coal value
+    coal_vals = [
+        opening_stock,       # B5
+        arrival_ind,         # C5
+        arrival_imp or 0,    # D5
+        auto_coal_sep,       # E5 (Auto-calculated!)
+        auto_coal_refl,      # F5 (Auto-calculated!)
+        coal_thermic or 0,   # G5 
+        auto_total_coal,     # H5 (Auto-calculated!)
+        auto_closing,        # I5 (Auto-calculated!)
+        ""                   # J5 (REMARKS)
     ]
-        for i, v in enumerate(coal_vals, 2):
-            cell(5, i, v, align=center, b=border)
+    
+    for i, v in enumerate(coal_vals, 2):
+        cell(5, i, v, align=center, b=border)
 
     ws.append([])  # row 6 empty
 
@@ -1088,33 +1108,59 @@ def export_monthly_coal_excel(
     ws.row_dimensions[4].height = 50
 
     # Data rows
-    total_coal_sum = 0; total_steam_sum = 0
+    total_coal_sum = 0 
+    total_steam_sum = 0
+
     for r in reports:
         row_num = ws.max_row + 1
-        date_str = safe_date_str(getattr(r, 'report_date', getattr(r, 'log_date', None)))
-        total_coal = r.total_coal_consumed or 0
-        total_steam = r.total_steam or 0
-        total_coal_sum += total_coal; total_steam_sum += total_steam
+        
+        # Safely grab the date
+        raw_date = getattr(r, 'report_date', None) or getattr(r, 'log_date', None)
+        date_str = safe_date_str(raw_date)
+        
+        # 👇 The brilliant null-safety helper function 👇
+        def g(attr, default=0):
+            val = getattr(r, attr, default)
+            return float(val) if val is not None else default
 
+        total_coal = g('total_coal_consumed')
+        total_steam = g('total_steam')
+        
+        total_coal_sum += total_coal
+        total_steam_sum += total_steam
+
+        # Perfectly mapped array without the accidental duplication
         row_data = [
-            date_str, r.opening_coal_stock,
-            (r.coal_arrival_indian or 0) + (r.coal_arrival_imported or 0),
-            r.coal_consumed_sep, r.closing_stock,
-            r.coal_consumed_refinery,
-            (r.coal_consumed_sep or 0) + (r.coal_consumed_refinery or 0),
-            r.coal_thermic, total_coal, r.closing_stock,
-            r.steam_sep_consumed, r.steam_refl_consumed,
-            total_steam, r.cs_ratio, r.feed_water_temp
+            date_str, 
+            g('opening_coal_stock'),
+            (g('coal_arrival_indian') + g('coal_arrival_imported')),
+            g('coal_consumed_sep'), 
+            g('closing_stock'),
+            g('coal_consumed_refinery'),
+            (g('coal_consumed_sep') + g('coal_consumed_refinery')),
+            g('coal_thermic'), 
+            total_coal, 
+            g('closing_stock'),
+            g('steam_sep_consumed'), 
+            g('steam_refl_consumed'),
+            total_steam, 
+            g('cs_ratio'), 
+            g('feed_water_temp')
         ]
+        
         for i, val in enumerate(row_data, 1):
             c = ws.cell(row_num, i, val)
-            c.border = border; c.alignment = center
+            c.border = border
+            c.alignment = center
             # Highlight C/S ratio
-            if i == 14 and val:
-                if 5.0 <= float(val) <= 5.6:
-                    c.fill = PatternFill("solid", fgColor="E2EFDA")
-                else:
-                    c.fill = PatternFill("solid", fgColor="FADBD8")
+            if i == 14 and val and val != 0:
+                try:
+                    if 5.0 <= float(val) <= 5.6:
+                        c.fill = PatternFill("solid", fgColor="E2EFDA")
+                    else:
+                        c.fill = PatternFill("solid", fgColor="FADBD8")
+                except:
+                    pass
 
     # Totals row
     total_row = ws.max_row + 1

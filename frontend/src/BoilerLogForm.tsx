@@ -11,6 +11,12 @@ const SHIFT_TIME_SLOTS: Record<string, string[]> = {
   'C': ['23:00', '01:00', '03:00', '05:00'],
 };
 
+const SHIFT_TIME_LABELS: Record<string, string[]> = {
+  'A': ['7:00 AM', '9:00 AM', '11:00 AM', '1:00 PM'],
+  'B': ['3:00 PM', '5:00 PM', '7:00 PM', '9:00 PM'],
+  'C': ['11:00 PM', '1:00 AM', '3:00 AM', '5:00 AM'],
+};
+
 const today = () => new Date().toISOString().split('T')[0];
 const currentShift = () => {
   const h = new Date().getHours();
@@ -121,33 +127,35 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
   }, [form.log_date]);
 
   useEffect(() => {
-    const autoFillSteam = async () => {
-      if (coalLocked) return; // already filled
-      const today = form.log_date;
-      try {
-        const res = await fetch(
-          `https://shalimar-ops.onrender.com/boiler-log/date/${today}`,
-          { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
-        );
-        if (res.ok) {
-          const logs = await res.json();
-          if (Array.isArray(logs) && logs.length > 0) {
-            const sepFlows = logs.map((l: any) => l.steam_flow_sep).filter(Boolean);
-            const reflFlows = logs.map((l: any) => l.steam_flow_refl).filter(Boolean);
-            if (sepFlows.length > 0) {
-              set('steam_sep_opening', String(sepFlows[0]));
-              set('steam_sep_closing', String(sepFlows[sepFlows.length - 1]));
-            }
-            if (reflFlows.length > 0) {
-              set('steam_refl_opening', String(reflFlows[0]));
-              set('steam_refl_closing', String(reflFlows[reflFlows.length - 1]));
-            }
+  const autoFillSteam = async () => {
+    if (coalLocked) return;
+    const today = form.log_date;
+    try {
+      const res = await fetch(
+        `https://shalimar-ops.onrender.com/boiler-log/date/${today}`,
+        { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+      );
+      if (res.ok) {
+        const logs = await res.json();
+        if (Array.isArray(logs) && logs.length > 0) {
+          const sepFlows = logs.map((l: any) => l.steam_flow_sep).filter(v => v != null && v > 0);
+          const reflFlows = logs.map((l: any) => l.steam_flow_refl).filter(v => v != null && v > 0);
+          
+          if (sepFlows.length > 0) {
+            // Opening = MIN (meter starts low), Closing = MAX (meter accumulates)
+            set('steam_sep_opening', String(Math.min(...sepFlows)));
+            set('steam_sep_closing', String(Math.max(...sepFlows)));
+          }
+          if (reflFlows.length > 0) {
+            set('steam_refl_opening', String(Math.min(...reflFlows)));
+            set('steam_refl_closing', String(Math.max(...reflFlows)));
           }
         }
-      } catch { }
-    };
-    autoFillSteam();
-  }, [form.log_date, coalLocked]);
+      }
+    } catch {}
+  };
+  autoFillSteam();
+}, [form.log_date, coalLocked]);
 
   const validate = () => {
     const w: string[] = [];
@@ -179,11 +187,11 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
     setError('');
 
     const cleanPayload: any = { ...form };
-    
+
     for (const key in cleanPayload) {
       // Convert all completely empty text boxes to 'null'
       if (cleanPayload[key] === "") {
-        cleanPayload[key] = null; 
+        cleanPayload[key] = null;
       }
     }
 
@@ -337,8 +345,10 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
               <label style={s.label}>Time *</label>
               <select style={s.select} value={form.log_time}
                 onChange={e => set('log_time', e.target.value)} required>
-                {SHIFT_TIME_SLOTS[form.shift as keyof typeof SHIFT_TIME_SLOTS].map(t => (
-                  <option key={t} value={t}>{t}</option>
+                {SHIFT_TIME_SLOTS[form.shift as keyof typeof SHIFT_TIME_SLOTS].map((t, i) => (
+                  <option key={t} value={t}>
+                    {SHIFT_TIME_LABELS[form.shift as keyof typeof SHIFT_TIME_LABELS][i]}
+                  </option>
                 ))}
               </select>
             </div>
