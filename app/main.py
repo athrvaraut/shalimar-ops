@@ -478,6 +478,16 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
                 "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
             ), {"date": date}).mappings().fetchone()
             report = dict(coal_result) if coal_result else None
+
+            # After: report = dict(coal_result) if coal_result else None
+            # Add this helper:
+        def safe_float(val, default=None):
+            if val is None:
+                return default
+            try:
+                return float(val)
+            except:
+                return default
         
         logs = db.execute(text(
             "SELECT * FROM boiler_log_entries WHERE log_date::text = :date "
@@ -486,11 +496,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         logs = [dict(r) for r in logs]
 
         # ── AUTO-CALCULATE from boiler entries ──────────────────
-        sep_flows = [l['steam_flow_sep'] for l in logs if l.get('steam_flow_sep')]
-        refl_flows = [l['steam_flow_refl'] for l in logs if l.get('steam_flow_refl')]
-        feed_temps = [l['feed_water_temp'] for l in logs if l.get('feed_water_temp')]
-        bed1_hz = [l['coal_feed_bed1_hz'] for l in logs if l.get('coal_feed_bed1_hz')]
-        bed2_hz = [l['coal_feed_bed2_hz'] for l in logs if l.get('coal_feed_bed2_hz')]
+        sep_flows = [float(l['steam_flow_sep']) for l in logs if l.get('steam_flow_sep')]
+        refl_flows = [float(l['steam_flow_refl']) for l in logs if l.get('steam_flow_refl')]
+        feed_temps = [float(l['feed_water_temp']) for l in logs if l.get('feed_water_temp')]
+        bed1_hz = [float(l['coal_feed_bed1_hz']) for l in logs if l.get('coal_feed_bed1_hz')]
+        bed2_hz = [float(l['coal_feed_bed2_hz']) for l in logs if l.get('coal_feed_bed2_hz')]
 
         sep_opening = sep_flows[0] if sep_flows else None
         sep_closing = sep_flows[-1] if sep_flows else None
@@ -510,43 +520,43 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
 
         # Get manual coal data from report (or from boiler entries)
-        opening_stock = report.get('opening_coal_stock') if report else None
-        arrival_ind = report.get('coal_arrival_indian') if report else None
-        arrival_imp = report.get('coal_arrival_imported', 0) if report else 0
-        coal_thermic = report.get('coal_thermic', 0) if report else 0
-        coal_bunker = report.get('coal_bunker_pct') if report else None
-        steam_pressure_ok = report.get('steam_pressure_ok', True) if report else True
+        opening_stock = safe_float(report.get('opening_coal_stock')) if report else None
+        arrival_ind = safe_float(report.get('coal_arrival_indian')) if report else None
+        arrival_imp = safe_float(report.get('coal_arrival_imported', 0)) if report else 0
+        coal_thermic = safe_float(report.get('coal_thermic', 0)) if report else 0
+        coal_bunker = safe_float(report.get('coal_bunker_pct')) if report else None
+        steam_pressure_ok = safe_float(report.get('steam_pressure_ok', True)) if report else True
 
         # Calculate coal SEP and REFL
         # E8: Coal SEP = steam_sep_consumed (KG) / coal_for_steam * coal_total... 
         # Actually from father's formula: Coal consumed SEP is calculated differently
         # Using the C/S ratio approach: coal_sep_mt = sep_consumed / (cs_ratio * 1000)
-        cs_ratio = report.get('cs_ratio') if report else None
+        cs_ratio = safe_float(report.get('cs_ratio')) if report else None
         
         # E5: Coal SEP (MT)
         if sep_consumed and cs_ratio and float(cs_ratio) > 0:
             auto_coal_sep = round(sep_consumed / (float(cs_ratio) * 1000), 3)
         else:
-            auto_coal_sep = report.get('coal_consumed_sep') if report else None
+            auto_coal_sep = safe_float(report.get('coal_consumed_sep')) if report else None
 
         # F5: Coal REFL (MT)
         coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam else None
         if coal_for_steam_mt is not None and auto_coal_sep is not None:
             auto_coal_refl = round(coal_for_steam_mt - auto_coal_sep, 3)
         else:
-            auto_coal_refl = report.get('coal_consumed_refinery') if report else None
+            auto_coal_refl = safe_float(report.get('coal_consumed_refinery')) if report else None
 
         # H5: Total Coal
         if auto_coal_sep is not None and auto_coal_refl is not None:
             auto_total_coal = round(auto_coal_sep + auto_coal_refl + float(coal_thermic or 0), 3)
         else:
-            auto_total_coal = report.get('total_coal_consumed') if report else None
+            auto_total_coal = safe_float(report.get('total_coal_consumed')) if report else None
 
         # I5: Closing Stock
         if opening_stock is not None and auto_total_coal is not None:
             auto_closing = round(float(opening_stock) + float(arrival_ind or 0) + float(arrival_imp or 0) - auto_total_coal, 3)
         else:
-            auto_closing = report.get('closing_stock') if report else None
+            auto_closing = safe_float(report.get('closing_stock')) if report else None
 
         wb = openpyxl.Workbook()
         ws = wb.active
