@@ -496,11 +496,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         logs = [dict(r) for r in logs]
 
         # ── AUTO-CALCULATE from boiler entries ──────────────────
-        sep_flows = [float(l['steam_flow_sep']) for l in logs if l.get('steam_flow_sep')]
-        refl_flows = [float(l['steam_flow_refl']) for l in logs if l.get('steam_flow_refl')]
-        feed_temps = [float(l['feed_water_temp']) for l in logs if l.get('feed_water_temp')]
-        bed1_hz = [float(l['coal_feed_bed1_hz']) for l in logs if l.get('coal_feed_bed1_hz')]
-        bed2_hz = [float(l['coal_feed_bed2_hz']) for l in logs if l.get('coal_feed_bed2_hz')]
+        sep_flows = [safe_float(l.get('steam_flow_sep')) for l in logs if safe_float(l.get('steam_flow_sep')) is not None]
+        refl_flows = [safe_float(l.get('steam_flow_refl')) for l in logs if safe_float(l.get('steam_flow_refl')) is not None]
+        feed_temps = [safe_float(l.get('feed_water_temp')) for l in logs if safe_float(l.get('feed_water_temp')) is not None]
+        bed1_hz = [safe_float(l.get('coal_feed_bed1_hz')) for l in logs if safe_float(l.get('coal_feed_bed1_hz')) is not None]
+        bed2_hz = [safe_float(l.get('coal_feed_bed2_hz')) for l in logs if safe_float(l.get('coal_feed_bed2_hz')) is not None]
 
         sep_opening = min(sep_flows) if sep_flows else None
         sep_closing = max(sep_flows) if sep_flows else None
@@ -721,7 +721,12 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             cell(17, 6, None, align=center, b=border)
             cell(17, 7, total_steam, Font(bold=True), yellow_fill, center, border)
             cell(17, 8, None, align=center, b=border)
-            cs_val = cs_ratio or 0
+
+            # 👇 AUTO-CALCULATE STEAM TO COAL RATIO 👇
+            if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
+                actual_cs_ratio = round(total_steam / coal_for_steam, 2)
+            else:
+                cs_val = cs_ratio or 0
             cs_fill = green_fill if (cs_val and 5.0 <= float(cs_val) <= 5.6) else PatternFill("solid", fgColor="FADBD8")
             cell(17, 9, cs_val, Font(bold=True), cs_fill, center, border)
 
