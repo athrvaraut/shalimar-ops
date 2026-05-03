@@ -502,10 +502,10 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         bed1_hz = [float(l['coal_feed_bed1_hz']) for l in logs if l.get('coal_feed_bed1_hz')]
         bed2_hz = [float(l['coal_feed_bed2_hz']) for l in logs if l.get('coal_feed_bed2_hz')]
 
-        sep_opening = sep_flows[0] if sep_flows else None
-        sep_closing = sep_flows[-1] if sep_flows else None
-        refl_opening = refl_flows[0] if refl_flows else None
-        refl_closing = refl_flows[-1] if refl_flows else None
+        sep_opening = min(sep_flows) if sep_flows else None
+        sep_closing = max(sep_flows) if sep_flows else None
+        refl_opening = min(refl_flows) if refl_flows else None
+        refl_closing = max(refl_flows) if refl_flows else None
 
         sep_consumed = (sep_closing - sep_opening) if (sep_closing and sep_opening) else None
         refl_consumed = (refl_closing - refl_opening) if (refl_closing and refl_opening) else None
