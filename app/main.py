@@ -721,14 +721,15 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             cell(17, 6, None, align=center, b=border)
             cell(17, 7, total_steam, Font(bold=True), yellow_fill, center, border)
             cell(17, 8, None, align=center, b=border)
-
+            
             # 👇 AUTO-CALCULATE STEAM TO COAL RATIO 👇
             if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
                 actual_cs_ratio = round(total_steam / coal_for_steam, 2)
             else:
-                cs_val = cs_ratio or 0
-            cs_fill = green_fill if (cs_val and 5.0 <= float(cs_val) <= 5.6) else PatternFill("solid", fgColor="FADBD8")
-            cell(17, 9, cs_val, Font(bold=True), cs_fill, center, border)
+                actual_cs_ratio = 0
+                
+            cs_fill = green_fill if (5.0 <= actual_cs_ratio <= 5.6) else PatternFill("solid", fgColor="FADBD8")
+            cell(17, 9, actual_cs_ratio, Font(bold=True), cs_fill, center, border)
 
         # Column widths matching father's layout
         col_widths = {
