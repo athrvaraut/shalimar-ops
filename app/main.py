@@ -516,8 +516,14 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         all_hz = bed1_hz + bed2_hz
         avg_feeding = round(sum(all_hz) / len(all_hz), 2) if all_hz else None
 
-        # Coal for Steam = avg_feeding * 60 * 24 (in KG, stays as KG for display)
+        # Coal for Steam = avg_feeding * 60 * 24 (in KG)
         coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
+
+        # 👇 4. CALCULATE ACTUAL CS RATIO FIRST 👇
+        if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
+            actual_cs_ratio = round(total_steam / coal_for_steam, 2)
+        else:
+            actual_cs_ratio = 0
 
         # Get manual coal data from report (or from boiler entries)
         opening_stock = safe_float(report.get('opening_coal_stock')) if report else None
@@ -525,19 +531,14 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         arrival_imp = safe_float(report.get('coal_arrival_imported', 0)) if report else 0
         coal_thermic = safe_float(report.get('coal_thermic', 0)) if report else 0
         coal_bunker = safe_float(report.get('coal_bunker_pct')) if report else None
-        steam_pressure_ok = safe_float(report.get('steam_pressure_ok', True)) if report else True
+        steam_pressure_ok = report.get('steam_pressure_ok', True) if report else True
 
         # Calculate coal SEP and REFL
-        # E8: Coal SEP = steam_sep_consumed (KG) / coal_for_steam * coal_total... 
-        # Actually from father's formula: Coal consumed SEP is calculated differently
-        # Using the C/S ratio approach: coal_sep_mt = sep_consumed / (cs_ratio * 1000)
-        cs_ratio = safe_float(report.get('cs_ratio')) if report else None
-        
-        # E5: Coal SEP (MT)
-        if sep_consumed and cs_ratio and float(cs_ratio) > 0:
-            auto_coal_sep = round(sep_consumed / (float(cs_ratio) * 1000), 3)
+        # 👇 E5: Coal SEP (MT) - Uses the actual_cs_ratio calculated above! 👇
+        if sep_consumed is not None and actual_cs_ratio > 0:
+            auto_coal_sep = round(sep_consumed / (actual_cs_ratio * 1000), 3)
         else:
-            auto_coal_sep = safe_float(report.get('coal_consumed_sep')) if report else None
+            auto_coal_sep = safe_float(report.get('coal_consumed_sep')) if report else 0
 
         # F5: Coal REFL (MT)
         coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam else None
@@ -721,13 +722,7 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             cell(17, 6, None, align=center, b=border)
             cell(17, 7, total_steam, Font(bold=True), yellow_fill, center, border)
             cell(17, 8, None, align=center, b=border)
-            
-            # 👇 AUTO-CALCULATE STEAM TO COAL RATIO 👇
-            if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
-                actual_cs_ratio = round(total_steam / coal_for_steam, 2)
-            else:
-                actual_cs_ratio = 0
-                
+                            
             cs_fill = green_fill if (5.0 <= actual_cs_ratio <= 5.6) else PatternFill("solid", fgColor="FADBD8")
             cell(17, 9, actual_cs_ratio, Font(bold=True), cs_fill, center, border)
 
