@@ -1039,161 +1039,191 @@ def export_power_monthly_excel(
 
 
 @app.get("/export/monthly-coal/{year}/{month}")
-def export_monthly_coal_excel(
-    year: int, month: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user)
-):
+def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
     try:
-        import calendar
-        from datetime import date, datetime
-        from sqlalchemy import text          # 👈 FIX 1: Clears the "text is not defined" error
-        from types import SimpleNamespace    # 👈 Fixes object dot-notation (r.report_date)
+        from sqlalchemy import text
+        from datetime import datetime
 
-        month_name = datetime(year, month, 1).strftime("%b").upper()
-         # Try daily_coal_steam first
         prefix = f"{year}-{str(month).zfill(2)}%"
         results = db.execute(text(
-            "SELECT * FROM daily_coal_steam "
-            "WHERE report_date::text LIKE :prefix "
-            "ORDER BY report_date ASC"
-            ), {"prefix": prefix}).mappings().all()
-        reports = [SimpleNamespace(**dict(r)) for r in results]
-        
-        # Also check boiler_log_entries for coal data merged there
-        if not reports:
-            results2 = db.execute(text(
-                "SELECT DISTINCT ON (log_date) log_date as report_date, "
-                "coal_opening_stock as opening_coal_stock, "
-                "coal_arrival_indian, coal_arrival_imported, "
-                "coal_consumed_sep, coal_consumed_refinery, coal_thermic, "
-                "total_coal_consumed, closing_stock, "
-                "steam_sep_opening, steam_sep_closing, steam_sep_consumed, "
-                "steam_refl_opening, steam_refl_closing, steam_refl_consumed, "
-                "total_steam, cs_ratio, feed_water_temp, coal_bunker_pct "
-                "FROM boiler_log_entries "
-                "WHERE log_date LIKE :prefix "
-                "AND coal_opening_stock IS NOT NULL "
-                "ORDER BY log_date ASC"
-            ), {"prefix": prefix}).mappings().all()
-            
-            reports = [SimpleNamespace(**dict(r)) for r in results2]
+            "SELECT * FROM daily_coal_steam WHERE report_date::text LIKE :prefix ORDER BY report_date ASC"
+        ), {"prefix": prefix}).mappings().all()
+        records = [dict(r) for r in results]
+
+        def sf(val, default=None):
+            if val is None: return default
+            try: return float(val)
+            except: return default
+
+        def fmt_date(val):
+            if val is None: return ''
+            if hasattr(val, 'strftime'): return val.strftime("%d/%m/%Y")
+            try: return datetime.strptime(str(val)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+            except: return str(val)
+
+        month_name = datetime(year, month, 1).strftime("%b").upper()
+        NUM_COLS = 15
 
         wb = openpyxl.Workbook()
-        ws = wb.active    
+        ws = wb.active
         ws.title = "Sheet1"
 
-        bold = Font(bold=True)
-        center = Alignment(horizontal="center", vertical="center")
-        thin = Side(style="thin")
+        bold = Font(bold=True, name='Calibri')
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        thin = Side(style='thin')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        blue_fill = PatternFill("solid", fgColor="BDD7EE")
-        yellow_fill = PatternFill("solid", fgColor="FFFF00")
+        blue_fill = PatternFill('solid', fgColor='BDD7EE')
+        yellow_fill = PatternFill('solid', fgColor='FFFF00')
+        last_col = openpyxl.utils.get_column_letter(NUM_COLS)
 
-        # Header rows exactly matching father's file
-        ws["A1"] = "SHALIMAR NUTRIENTS PRIVATE LIMITED"
-        ws["A1"].font = Font(bold=True, size=13)
-        ws["A2"] = "BOILER SECTION"
-        ws["A2"].font = bold
-        ws["A3"] = f"COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}"
-        ws["A3"].font = Font(bold=True, size=11)
-        ws.merge_cells("A3:O3")
-        ws["A3"].alignment = center
-        # Column headers exactly matching father's file
-        col_headers = [
-            "DATE", "OPENING STOCK OF COAL IN MT", "ARRIVAL COAL IN MT",
-            "COAL CONSUMPTION IN MT (SEP)", "CLOSING STOCK",
-            "COAL CONSUMPTION IN MT (REF.)", "TOTAL COAL FOR STEAM PRODUCTION",
-            "COAL CONSUMPTION IN THERMIC BOILER IN MT",
-            "COAL CONSUMPTION IN MT (TOTAL)", "CLOSING STOCK IN MT",
-            "STEAM PRODUCTION IN KG (SEP)", "STEAM PRODUCTION IN KG (REF.)",
-            "TOTAL STEAM PRODUCTION IN KG", "C/S RATIO", "FEED WATER TEMP (°C)"
+        # Row 1: Company name
+        ws.merge_cells(f'A1:{last_col}1')
+        ws['A1'] = 'SHALIMAR NUTRIENTS PRIVATE LIMITED'
+        ws['A1'].font = Font(bold=True, size=14, name='Calibri')
+        ws['A1'].alignment = center
+
+        # Row 2: Section
+        ws.merge_cells(f'A2:{last_col}2')
+        ws['A2'] = 'BOILER SECTION'
+        ws['A2'].font = Font(bold=True, size=12, name='Calibri')
+        ws['A2'].alignment = center
+
+        # Row 3: empty
+
+        # Row 4: Title
+        ws.merge_cells(f'A4:{last_col}4')
+        ws['A4'] = f'COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}'
+        ws['A4'].font = Font(bold=True, size=11, name='Calibri')
+        ws['A4'].alignment = center
+
+        # Row 5: empty
+
+        # Row 6: Column headers  (A=1 … O=15)
+        headers = [
+            'DATE',
+            'OPENING STOCK OF COAL IN MT',
+            'ARRIVAL COAL IN MT',
+            'COAL CONSUMPTION IN  MT (SEP)',
+            'COAL CONSUMPTION IN MT (REF.)',
+            'TOTAL COAL FOR STEAM PRODUCTION',
+            'COAL CONSUMPTION IN THERMIC BOILER IN MT',
+            'COAL CONSUMPTION IN MT (TOTAL)',
+            'CLOSING STOCK IN MT',
+            'AVERAGE ASH OUTCOME IN MT',
+            'STEAM PRODUCTION IN KG (SEP)',
+            'STEAM PRODUCTION IN KG (REF.)',
+            'TOTAL STEAM PRODUCTION IN KG',
+            'C/S RATIO',
+            'FEED WATER TEMP (°C)',
         ]
-
-        for i, h in enumerate(col_headers, 1):
-            c = ws.cell(4, i, h)
-            c.font = bold; c.fill = blue_fill
-            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for col_idx, h in enumerate(headers, 1):
+            c = ws.cell(6, col_idx, h)
+            c.font = bold
+            c.fill = blue_fill
             c.border = border
-        ws.row_dimensions[4].height = 50
+            c.alignment = center
+        ws.row_dimensions[6].height = 50
 
-        # Data rows
-        total_coal_sum = 0 
-        total_steam_sum = 0
+        DATA_START = 7
 
-        for r in reports:
-            row_num = ws.max_row + 1
-            
-            # Safely grab the date
-            raw_date = getattr(r, 'report_date', None) or getattr(r, 'log_date', None)
-            date_str = safe_date_str(raw_date)
-            
-            # 👇 The brilliant null-safety helper function 👇
-            def g(attr, default=0):
-                val = getattr(r, attr, default)
-                return float(val) if val is not None else default
+        for i, rec in enumerate(records):
+            r = DATA_START + i
 
-            total_coal = g('total_coal_consumed')
-            total_steam = g('total_steam')        
-            
-            total_coal_sum += total_coal
-            total_steam_sum += total_steam
+            # Direct / raw values
+            arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
+            sep    = sf(rec.get('coal_consumed_sep'))
+            ref_   = sf(rec.get('coal_consumed_refinery'))
+            thermic = sf(rec.get('coal_thermic'))
+            steam_sep = sf(rec.get('steam_sep_consumed'))
+            steam_ref = sf(rec.get('steam_refl_consumed'))
+            fw_temp = sf(rec.get('feed_water_temp'))
 
-            # Perfectly mapped array without the accidental duplication
-            row_data = [
-                date_str, 
-                g('opening_coal_stock'),
-                (g('coal_arrival_indian') + g('coal_arrival_imported')),
-                g('coal_consumed_sep'), 
-                g('closing_stock'),
-                g('coal_consumed_refinery'),
-                (g('coal_consumed_sep') + g('coal_consumed_refinery')),
-                g('coal_thermic'), 
-                total_coal, 
-                g('closing_stock'),
-                g('steam_sep_consumed'), 
-                g('steam_refl_consumed'),            
-                total_steam, 
-                g('cs_ratio'), 
-                g('feed_water_temp')
-            ]
-            
-            for i, val in enumerate(row_data, 1):
-                c = ws.cell(row_num, i, val)
+            def wc(col, val, formula=False):
+                c = ws.cell(r, col, val)
                 c.border = border
                 c.alignment = center
-                # Highlight C/S ratio
-                if i == 14 and val and val != 0:
-                    try:
-                        if 5.0 <= float(val) <= 5.6:
-                            c.fill = PatternFill("solid", fgColor="E2EFDA")
-                        else:
-                            c.fill = PatternFill("solid", fgColor="FADBD8")
-                    except:
-                        pass
-        # Totals row
-        total_row = ws.max_row + 1
-        ws.cell(total_row, 1, "TOTAL").font = Font(bold=True)
-        ws.cell(total_row, 9, round(total_coal_sum, 3)).font = Font(bold=True)
-        ws.cell(total_row, 9).fill = yellow_fill
-        ws.cell(total_row, 13, total_steam_sum).font = Font(bold=True)
-        ws.cell(total_row, 13).fill = yellow_fill
-        avg_cs = round(total_steam_sum / total_coal_sum, 3) if total_coal_sum > 0 else 0
-        ws.cell(total_row, 14, avg_cs).font = Font(bold=True)
-        ws.cell(total_row, 14).fill = yellow_fill
+                return c
+
+            wc(1, fmt_date(rec.get('report_date')))                      # A DATE
+            wc(2, sf(rec.get('opening_coal_stock')))                     # B OPENING STOCK
+            wc(3, arrival if arrival and arrival > 0 else None)          # C ARRIVAL
+            wc(4, sep if sep and sep > 0 else None)                      # D SEP
+            wc(5, ref_ if ref_ and ref_ > 0 else None)                   # E REF
+
+            # F TOTAL COAL FOR STEAM = D+E
+            c = ws.cell(r, 6, f'=IF(D{r}+E{r}>0,D{r}+E{r},0)')
+            c.border = border; c.alignment = center; c.font = bold
+
+            wc(7, thermic if thermic and thermic > 0 else None)           # G THERMIC
+
+            # H TOTAL COAL CONSUMPTION = D+E+G
+            c = ws.cell(r, 8, f'=D{r}+E{r}+IF(G{r}="",0,G{r})')
+            c.border = border; c.alignment = center; c.font = bold
+
+            # I CLOSING STOCK = B+C-H
+            c = ws.cell(r, 9, f'=B{r}+IF(C{r}="",0,C{r})-H{r}')
+            c.border = border; c.alignment = center
+
+            # J AVERAGE ASH = F * 0.32
+            c = ws.cell(r, 10, f'=F{r}*0.32')
+            c.border = border; c.alignment = center
+
+            wc(11, steam_sep if steam_sep and steam_sep > 0 else None)   # K STEAM SEP
+            wc(12, steam_ref if steam_ref and steam_ref > 0 else None)   # L STEAM REF
+
+            # M TOTAL STEAM = K+L
+            c = ws.cell(r, 13, f'=IF(K{r}+L{r}>0,K{r}+L{r},0)')
+            c.border = border; c.alignment = center; c.font = bold
+
+            # N C/S RATIO = M/(F*1000)
+            c = ws.cell(r, 14, f'=IF(F{r}>0,M{r}/(F{r}*1000),"")')
+            c.border = border; c.alignment = center
+            c.number_format = '0.00'
+
+            wc(15, fw_temp if fw_temp and fw_temp > 0 else None)          # O FEED WATER
+
+        # TOTAL row
+        if records:
+            total_r = DATA_START + len(records)
+            c = ws.cell(total_r, 1, 'TOTAL')
+            c.font = bold; c.border = border; c.alignment = center
+            c.fill = yellow_fill
+
+            last_data = DATA_START + len(records) - 1
+            sum_cols = [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]
+            for col in sum_cols:
+                cl = openpyxl.utils.get_column_letter(col)
+                c = ws.cell(total_r, col, f'=SUM({cl}{DATA_START}:{cl}{last_data})')
+                c.font = bold; c.border = border; c.alignment = center
+                c.fill = yellow_fill
+
+            # C/S ratio total
+            c = ws.cell(total_r, 14, f'=IF(F{total_r}>0,M{total_r}/(F{total_r}*1000),"")')
+            c.font = bold; c.border = border; c.alignment = center
+            c.fill = yellow_fill; c.number_format = '0.00'
+
+            # Border remaining cells
+            for col in [1, 2, 9, 15]:
+                ws.cell(total_r, col).border = border
+                ws.cell(total_r, col).fill = yellow_fill
 
         # Column widths
-        widths = [12, 18, 14, 18, 14, 18, 18, 18, 16, 14, 16, 16, 16, 12, 14]
+        widths = [12, 15, 14, 16, 16, 18, 22, 18, 14, 16, 18, 18, 18, 10, 14]
         for i, w in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
         buffer = BytesIO()
-        wb.save(buffer); buffer.seek(0)
+        wb.save(buffer)
+        buffer.seek(0)
+
         return StreamingResponse(
             buffer,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=Coal_Steam_{month_name}_{year}.xlsx"}
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition": f"attachment; filename=Boiler_Monthly_{month_name}_{year}.xlsx"}
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Monthly Excel failed: {str(e)}")
         
     except Exception as e:
         from fastapi import HTTPException
