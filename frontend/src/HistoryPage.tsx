@@ -73,6 +73,9 @@ export default function HistoryPage({ token, onBack }: Props) {
       const a = document.createElement('a');
       a.href = window.URL.createObjectURL(blob);
 
+      const mNames = ['JAN.', 'FEB.', 'MAR.', 'APR.', 'MAY.', 'JUN.', 'JUL.', 'AUG.', 'SEP.', 'OCT.', 'NOV.', 'DEC.'];
+      a.download = `STEAM COAL ${mNames[month - 1]}-${year}.xlsx`;
+
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -152,7 +155,7 @@ export default function HistoryPage({ token, onBack }: Props) {
           <div style={{ fontSize: '40px', marginBottom: '15px' }}>⏳</div>
           <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>Waking up the server & fetching logs...</h3>
           <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>
-            (This might take up to 50 seconds if the Render server was asleep. Please don't refresh!)
+            (This might take up to 50 seconds if the server was asleep. Please don't refresh!)
           </p>
         </div>
       ) : (

@@ -1063,7 +1063,7 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             except: return str(val)
 
         month_name = datetime(year, month, 1).strftime("%b").upper()
-        NUM_COLS = 15
+        NUM_COLS = 14
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -1115,7 +1115,6 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             'STEAM PRODUCTION IN KG (REF.)',
             'TOTAL STEAM PRODUCTION IN KG',
             'C/S RATIO',
-            'FEED WATER TEMP (°C)',
         ]
         for col_idx, h in enumerate(headers, 1):
             c = ws.cell(6, col_idx, h)
@@ -1126,6 +1125,9 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         ws.row_dimensions[6].height = 50
 
         DATA_START = 7
+        
+        # Python will track the bottom totals natively to bypass Excel's formula block
+        col_totals = {3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 10:0, 11:0, 12:0, 13:0}
 
         for i, rec in enumerate(records):
             r = DATA_START + i
@@ -1174,80 +1176,86 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             # 2. Get the standard manual values
             arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
             thermic = sf(rec.get('coal_thermic'))
-            fw_temp = sf(rec.get('feed_water_temp'))
-            # 👆 END OF SMART AUTO-CALCULATION 👆
+            opening = sf(rec.get('opening_coal_stock'))
 
-            def wc(col, val, formula=False):
+            # 👇 PYTHON MATH (Replaces Excel string formulas) 👇
+            f_val = round((sep or 0) + (ref_ or 0), 3)
+            h_val = round(f_val + (thermic or 0), 3)
+            i_val = round(opening + (arrival or 0) - h_val, 3) if opening is not None else None
+            j_val = round(f_val * 0.32, 3)
+            m_val = (steam_sep or 0) + (steam_ref or 0)
+            n_val = round(m_val / (f_val * 1000), 2) if f_val > 0 and m_val > 0 else None
+
+            # Add to Totals
+            col_totals[3] += (arrival or 0)
+            col_totals[4] += (sep or 0)
+            col_totals[5] += (ref_ or 0)
+            col_totals[6] += f_val
+            col_totals[7] += (thermic or 0)
+            col_totals[8] += h_val
+            col_totals[10] += j_val
+            col_totals[11] += (steam_sep or 0)
+            col_totals[12] += (steam_ref or 0)
+            col_totals[13] += m_val
+
+            def wc(col, val):
                 c = ws.cell(r, col, val)
                 c.border = border
                 c.alignment = center
                 return c
 
             wc(1, fmt_date(rec.get('report_date')))                      # A DATE
-            wc(2, sf(rec.get('opening_coal_stock')))                     # B OPENING STOCK
+            wc(2, opening)                                               # B OPENING STOCK
             wc(3, arrival if arrival and arrival > 0 else None)          # C ARRIVAL
             wc(4, sep if sep and sep > 0 else None)                      # D SEP
             wc(5, ref_ if ref_ and ref_ > 0 else None)                   # E REF
 
-            # F TOTAL COAL FOR STEAM = D+E
-            c = ws.cell(r, 6, f'=IF(D{r}+E{r}>0,D{r}+E{r},0)')
-            c.border = border; c.alignment = center; c.font = bold
+            # F TOTAL COAL FOR STEAM (Uses Python f_val instead of Excel formula)
+            c = wc(6, f_val if f_val > 0 else None)
+            c.font = bold
 
             wc(7, thermic if thermic and thermic > 0 else None)           # G THERMIC
 
-            # H TOTAL COAL CONSUMPTION = D+E+G
-            c = ws.cell(r, 8, f'=D{r}+E{r}+IF(G{r}="",0,G{r})')
-            c.border = border; c.alignment = center; c.font = bold
+            # H TOTAL COAL CONSUMPTION (Uses Python h_val instead of Excel formula)
+            c = wc(8, h_val if h_val > 0 else None)
+            c.font = bold
 
-            # I CLOSING STOCK = B+C-H
-            c = ws.cell(r, 9, f'=B{r}+IF(C{r}="",0,C{r})-H{r}')
-            c.border = border; c.alignment = center
-
-            # J AVERAGE ASH = F * 0.32
-            c = ws.cell(r, 10, f'=F{r}*0.32')
-            c.border = border; c.alignment = center
-
+            wc(9, i_val)                                                 # I CLOSING STOCK
+            wc(10, j_val if j_val > 0 else None)                         # J AVERAGE ASH
             wc(11, steam_sep if steam_sep and steam_sep > 0 else None)   # K STEAM SEP
             wc(12, steam_ref if steam_ref and steam_ref > 0 else None)   # L STEAM REF
 
-            # M TOTAL STEAM = K+L
-            c = ws.cell(r, 13, f'=IF(K{r}+L{r}>0,K{r}+L{r},0)')
-            c.border = border; c.alignment = center; c.font = bold
+            # M TOTAL STEAM (Uses Python m_val instead of Excel formula)
+            c = wc(13, m_val if m_val > 0 else None)
+            c.font = bold
 
-            # N C/S RATIO = M/(F*1000)
-            c = ws.cell(r, 14, f'=IF(F{r}>0,M{r}/(F{r}*1000),"")')
-            c.border = border; c.alignment = center
-            c.number_format = '0.00'
-
-            wc(15, fw_temp if fw_temp and fw_temp > 0 else None)          # O FEED WATER
+            # N C/S RATIO (Uses Python n_val instead of Excel formula)
+            wc(14, n_val)
+            ws.cell(r, 14).number_format = '0.00'
 
         # TOTAL row
         if records:
             total_r = DATA_START + len(records)
             c = ws.cell(total_r, 1, 'TOTAL')
-            c.font = bold; c.border = border; c.alignment = center
-            c.fill = yellow_fill
+            c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill
 
-            last_data = DATA_START + len(records) - 1
-            sum_cols = [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]
-            for col in sum_cols:
-                cl = openpyxl.utils.get_column_letter(col)
-                c = ws.cell(total_r, col, f'=SUM({cl}{DATA_START}:{cl}{last_data})')
-                c.font = bold; c.border = border; c.alignment = center
-                c.fill = yellow_fill
+            for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]:
+                val = col_totals[col]
+                c = ws.cell(total_r, col, val if val > 0 else None)
+                c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill
 
-            # C/S ratio total
-            c = ws.cell(total_r, 14, f'=IF(F{total_r}>0,M{total_r}/(F{total_r}*1000),"")')
-            c.font = bold; c.border = border; c.alignment = center
-            c.fill = yellow_fill; c.number_format = '0.00'
+            t_f = col_totals[6]
+            t_m = col_totals[13]
+            t_cs = round(t_m / (t_f * 1000), 2) if t_f > 0 else None
+            
+            c = ws.cell(total_r, 14, t_cs)
+            c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill; c.number_format = '0.00'
 
-            # Border remaining cells
-            for col in [1, 2, 9, 15]:
-                ws.cell(total_r, col).border = border
-                ws.cell(total_r, col).fill = yellow_fill
+            for col in [1, 2, 9]:
+                ws.cell(total_r, col).border = border; ws.cell(total_r, col).fill = yellow_fill
 
         # Column widths
-        widths = [12, 15, 14, 16, 16, 18, 22, 18, 14, 16, 18, 18, 18, 10, 14]
+        widths = [12, 15, 14, 16, 16, 18, 22, 18, 14, 16, 18, 18, 18, 10]
         for i, w in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
@@ -1257,15 +1265,11 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
 
         return StreamingResponse(
             buffer,
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            headers={"Content-Disposition": f"attachment; filename=Boiler_Monthly_{month_name}_{year}.xlsx"}
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Monthly Excel failed: {str(e)}")
-        
-    except Exception as e:
         from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"Monthly Excel generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Monthly Excel failed: {str(e)}")
 
 @app.get("/history/boiler")
 def history_boiler(year: int, month: int, db: Session = Depends(get_db),
