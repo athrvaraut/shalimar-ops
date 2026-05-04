@@ -1198,6 +1198,11 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             col_totals[12] += (steam_ref or 0)
             col_totals[13] += m_val
 
+            # 2. Get the standard manual values
+            arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
+            thermic = sf(rec.get('coal_thermic'))
+            opening = sf(rec.get('opening_coal_stock'))
+
             def wc(col, val):
                 c = ws.cell(r, col, val)
                 c.border = border
@@ -1210,51 +1215,61 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             wc(4, sep if sep and sep > 0 else None)                      # D SEP
             wc(5, ref_ if ref_ and ref_ > 0 else None)                   # E REF
 
-            # F TOTAL COAL FOR STEAM (Uses Python f_val instead of Excel formula)
-            c = wc(6, f_val if f_val > 0 else None)
-            c.font = bold
+            # 👇 LIVE EXCEL FORMULAS START HERE 👇
 
-            wc(7, thermic if thermic and thermic > 0 else None)           # G THERMIC
+            # F: TOTAL COAL FOR STEAM = D + E
+            c = ws.cell(r, 6, f'=IF(D{r}+E{r}>0,D{r}+E{r},0)')
+            c.border = border; c.alignment = center; c.font = bold
 
-            # H TOTAL COAL CONSUMPTION (Uses Python h_val instead of Excel formula)
-            c = wc(8, h_val if h_val > 0 else None)
-            c.font = bold
+            wc(7, thermic if thermic and thermic > 0 else None)          # G THERMIC
 
-            wc(9, i_val)                                                 # I CLOSING STOCK
-            wc(10, j_val if j_val > 0 else None)                         # J AVERAGE ASH
+            # H: TOTAL COAL CONSUMPTION = F + G
+            c = ws.cell(r, 8, f'=F{r}+IF(G{r}="",0,G{r})')
+            c.border = border; c.alignment = center; c.font = bold
+
+            # I: CLOSING STOCK = B + C - H
+            c = ws.cell(r, 9, f'=B{r}+IF(C{r}="",0,C{r})-H{r}')
+            c.border = border; c.alignment = center
+
+            # J: AVERAGE ASH = F * 0.32
+            c = ws.cell(r, 10, f'=F{r}*0.32')
+            c.border = border; c.alignment = center
+
             wc(11, steam_sep if steam_sep and steam_sep > 0 else None)   # K STEAM SEP
             wc(12, steam_ref if steam_ref and steam_ref > 0 else None)   # L STEAM REF
 
-            # M TOTAL STEAM (Uses Python m_val instead of Excel formula)
-            c = wc(13, m_val if m_val > 0 else None)
-            c.font = bold
+            # M: TOTAL STEAM = K + L
+            c = ws.cell(r, 13, f'=IF(K{r}+L{r}>0,K{r}+L{r},0)')
+            c.border = border; c.alignment = center; c.font = bold
 
-            # N C/S RATIO (Uses Python n_val instead of Excel formula)
-            wc(14, n_val)
-            ws.cell(r, 14).number_format = '0.00'
+            # N: C/S RATIO = M / (F * 1000)
+            c = ws.cell(r, 14, f'=IF(F{r}>0,M{r}/(F{r}*1000),"")')
+            c.border = border; c.alignment = center
+            c.number_format = '0.00'
 
-        # TOTAL row
+        # 👇 LIVE FORMULAS FOR THE TOTALS ROW 👇
         if records:
             total_r = DATA_START + len(records)
             c = ws.cell(total_r, 1, 'TOTAL')
             c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill
 
-            for col in [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]:
-                val = col_totals[col]
-                c = ws.cell(total_r, col, val if val > 0 else None)
+            last_data = DATA_START + len(records) - 1
+            sum_cols = [3, 4, 5, 6, 7, 8, 10, 11, 12, 13]
+            for col in sum_cols:
+                cl = openpyxl.utils.get_column_letter(col)
+                c = ws.cell(total_r, col, f'=SUM({cl}{DATA_START}:{cl}{last_data})')
                 c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill
 
-            t_f = col_totals[6]
-            t_m = col_totals[13]
-            t_cs = round(t_m / (t_f * 1000), 2) if t_f > 0 else None
-            
-            c = ws.cell(total_r, 14, t_cs)
-            c.font = bold; c.border = border; c.alignment = center; c.fill = yellow_fill; c.number_format = '0.00'
+            # C/S ratio total
+            c = ws.cell(total_r, 14, f'=IF(F{total_r}>0,M{total_r}/(F{total_r}*1000),"")')
+            c.font = bold; c.border = border; c.alignment = center
+            c.fill = yellow_fill; c.number_format = '0.00'
 
             for col in [1, 2, 9]:
-                ws.cell(total_r, col).border = border; ws.cell(total_r, col).fill = yellow_fill
+                ws.cell(total_r, col).border = border
+                ws.cell(total_r, col).fill = yellow_fill
 
-        # Column widths
+        # Column widths (Exactly 14 to match the removed Feed Water column)
         widths = [12, 15, 14, 16, 16, 18, 22, 18, 14, 16, 18, 18, 18, 10]
         for i, w in enumerate(widths, 1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
