@@ -40,7 +40,7 @@ export default function HistoryPage({ token, onBack }: Props) {
         window.location.href = '/login';      // Kick them back to the login screen
         return;                               // Stop running the rest of the code
       }
-      
+
       const d = await res.json();
       // ADD THIS LINE:
       console.log("Backend Response:", d);
@@ -56,29 +56,28 @@ export default function HistoryPage({ token, onBack }: Props) {
     try {
       const res = await fetch(
         `https://shalimar-ops.onrender.com/export/monthly-coal/${year}/${month}`,
-        { 
-          headers: { 
+        {
+          headers: {
             'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
             // Note: Removed 'Content-Type' as it is not needed for a GET request fetching a file
-          } 
+          }
         }
       );
 
-      if (!res.ok) { 
-        alert('No data found for this month.'); 
-        return; 
+      if (!res.ok) {
+        alert('No data found for this month.');
+        return;
       }
 
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = window.URL.createObjectURL(blob);
-    a.download = `Boiler_Monthly_${year}_${month}.xlsx`; a.click();
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = window.URL.createObjectURL(blob);
 
-    document.body.appendChild(a);
+      document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(a.href); // Cleans up browser memory
-      
+
     } catch (error) {
       console.error("Error downloading file:", error);
       alert("Failed to download the Excel file. Please check your connection.");
@@ -88,13 +87,13 @@ export default function HistoryPage({ token, onBack }: Props) {
   const downloadMonthlyPowerExcel = async () => {
     const res = await fetch(
       `https://shalimar-ops.onrender.com/export/power-monthly/${year}/${month}`,
-     { 
-    headers: { 
-      'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-      'Content-Type': 'application/json' 
-    } 
-  }
-);
+      {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = window.URL.createObjectURL(blob);
@@ -147,6 +146,18 @@ export default function HistoryPage({ token, onBack }: Props) {
         </div>
       </div>
 
+            {/* 👇 ADD THIS NEW LOADING CHECK HERE 👇 */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#555' }}>
+          <div style={{ fontSize: '40px', marginBottom: '15px' }}>⏳</div>
+          <h3 style={{ margin: '0 0 10px 0', color: '#1a365d' }}>Waking up the server & fetching logs...</h3>
+          <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+            (This might take up to 50 seconds if the Render server was asleep. Please don't refresh!)
+          </p>
+        </div>
+      ) : (
+        <> {/* This invisible tag groups the banner and calendar together */}
+        
       {/* Monthly Download Banner — clean full-width card */}
       <div style={s.downloadBanner}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -197,6 +208,9 @@ export default function HistoryPage({ token, onBack }: Props) {
           );
         })}
       </div>
+
+        </>
+      )}
 
       {/* Selected day detail */}
       {selectedDate && byDate[selectedDate] && (
@@ -341,8 +355,8 @@ const s: Record<string, React.CSSProperties> = {
   sTab: { padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#666', whiteSpace: 'nowrap' as const, borderBottom: '2px solid transparent' },
   sTabActive: { padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#0f3460', fontWeight: 700, whiteSpace: 'nowrap' as const, borderBottom: '2px solid #0f3460' },
   filterBar: { background: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const, borderBottom: '1px solid #e5e7eb' },
-  downloadBanner: {background: '#fff',margin: '12px 16px 0',borderRadius: 12,padding: '14px 18px',display: 'flex',justifyContent: 'space-between',alignItems: 'center',boxShadow: '0 1px 4px rgba(0,0,0,0.08)',border: '1px solid #e5e7eb',maxWidth: 760,marginLeft: 'auto',marginRight: 'auto',},
-  downloadBtn: {background: '#0f3460',color: '#fff',border: 'none',borderRadius: 8,padding: '9px 18px',cursor: 'pointer',fontSize: 13,fontWeight: 700,whiteSpace: 'nowrap' as const,boxShadow: '0 2px 6px rgba(15,52,96,0.3)',},
+  downloadBanner: { background: '#fff', margin: '12px 16px 0', borderRadius: 12, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb', maxWidth: 760, marginLeft: 'auto', marginRight: 'auto', },
+  downloadBtn: { background: '#0f3460', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' as const, boxShadow: '0 2px 6px rgba(15,52,96,0.3)', },
   arrowBtn: { background: '#f0f2f5', border: '1px solid #e0e0e0', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 14 },
   yearLabel: { fontSize: 16, fontWeight: 700, minWidth: 50, textAlign: 'center' as const },
   monthRow: { display: 'flex', gap: 4, flexWrap: 'wrap' as const },

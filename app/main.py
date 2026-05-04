@@ -1130,14 +1130,52 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         for i, rec in enumerate(records):
             r = DATA_START + i
 
-            # Direct / raw values
+            # 👇 1. SMART AUTO-CALCULATION FOR EACH DAY 👇
+            current_date = str(rec.get('report_date'))[:10]
+            
+            # Quickly fetch the hourly logs for THIS specific day
+            logs = db.execute(text(
+                "SELECT * FROM boiler_log_entries WHERE log_date::text = :date"
+            ), {"date": current_date}).mappings().all()
+            
+            sep_flows = [sf(l.get('steam_flow_sep')) for l in logs if sf(l.get('steam_flow_sep')) is not None]
+            refl_flows = [sf(l.get('steam_flow_refl')) for l in logs if sf(l.get('steam_flow_refl')) is not None]
+            bed1_hz = [sf(l.get('coal_feed_bed1_hz')) for l in logs if sf(l.get('coal_feed_bed1_hz')) is not None]
+            bed2_hz = [sf(l.get('coal_feed_bed2_hz')) for l in logs if sf(l.get('coal_feed_bed2_hz')) is not None]
+
+            # Calculate Steam Consumed
+            steam_sep = (max(sep_flows) - min(sep_flows)) if sep_flows else None
+            steam_ref = (max(refl_flows) - min(refl_flows)) if refl_flows else None
+            total_steam = (steam_sep + steam_ref) if (steam_sep is not None and steam_ref is not None) else None
+
+            # Calculate Coal for Steam & CS Ratio
+            all_hz = bed1_hz + bed2_hz
+            avg_feeding = round(sum(all_hz) / len(all_hz), 2) if all_hz else None
+            coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
+
+            if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
+                actual_cs_ratio = round(total_steam / coal_for_steam, 2)
+            else:
+                actual_cs_ratio = 0
+
+            # Calculate Coal SEP
+            if steam_sep is not None and actual_cs_ratio > 0:
+                sep = round(steam_sep / (actual_cs_ratio * 1000), 3)
+            else:
+                sep = sf(rec.get('coal_consumed_sep'))
+
+            # Calculate Coal REF
+            coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam is not None else None
+            if coal_for_steam_mt is not None and sep is not None:
+                ref_ = round(coal_for_steam_mt - sep, 3)
+            else:
+                ref_ = sf(rec.get('coal_consumed_refinery'))
+
+            # 2. Get the standard manual values
             arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
-            sep    = sf(rec.get('coal_consumed_sep'))
-            ref_   = sf(rec.get('coal_consumed_refinery'))
             thermic = sf(rec.get('coal_thermic'))
-            steam_sep = sf(rec.get('steam_sep_consumed'))
-            steam_ref = sf(rec.get('steam_refl_consumed'))
             fw_temp = sf(rec.get('feed_water_temp'))
+            # 👆 END OF SMART AUTO-CALCULATION 👆
 
             def wc(col, val, formula=False):
                 c = ws.cell(r, col, val)
