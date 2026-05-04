@@ -42,6 +42,11 @@ interface LogEntry {
 export default function HODDashboard({ token, onBack }: {
   token: string; onBack: () => void;
 }) {
+  const [coalOpeningStock, setCoalOpeningStock] = useState<number | null>(null);
+  const [suggestedOpening, setSuggestedOpening] = useState<number | null>(null);
+  const [coalStockApproved, setCoalStockApproved] = useState(false);
+  const [coalStockInput, setCoalStockInput] = useState('');
+  const [coalStockMsg, setCoalStockMsg] = useState('');
   const [boilerEntries, setBoilerEntries] = useState<LogEntry[]>([]);
   const [powerReports, setPowerReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +55,35 @@ export default function HODDashboard({ token, onBack }: {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedPowerId, setExpandedPowerId] = useState<number | null>(null);
   const [loadingMsg, setLoadingMsg] = useState('Loading...');
+
+  useEffect(() => {
+    const fetchCoalStock = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      try {
+        // Get yesterday's closing
+        const r1 = await fetch(`${API}/daily-report/closing/${today}`, { headers: authHeader });
+        if (r1.ok) {
+          const d1 = await r1.json();
+          if (d1.closing_stock) {
+            setSuggestedOpening(d1.closing_stock);
+            setCoalStockInput(String(d1.closing_stock));
+          }
+        }
+        // Check if today's opening already set
+        const r2 = await fetch(`${API}/daily-report/${today}`, { headers: authHeader });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          if (d2.opening_coal_stock) {
+            setCoalOpeningStock(d2.opening_coal_stock);
+            setCoalStockInput(String(d2.opening_coal_stock));
+            setCoalStockApproved(true);
+          }
+        }
+      } catch { }
+    };
+    fetchCoalStock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -111,6 +145,25 @@ export default function HODDashboard({ token, onBack }: {
     window.URL.revokeObjectURL(url);
   };
 
+  const approveOpeningStock = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const val = parseFloat(coalStockInput);
+    if (!val || isNaN(val)) { setCoalStockMsg('Enter a valid number'); return; }
+    try {
+      const res = await fetch(`${API}/daily-report/${today}/opening`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({ opening_stock: val }),
+      });
+      if (res.ok) {
+        setCoalOpeningStock(val);
+        setCoalStockApproved(true);
+        setCoalStockMsg(`✅ Opening stock set to ${val} MT`);
+        setTimeout(() => setCoalStockMsg(''), 4000);
+      }
+    } catch { setCoalStockMsg('Failed to set opening stock'); }
+  };
+
   return (
     <div style={s.page}>
 
@@ -151,6 +204,67 @@ export default function HODDashboard({ token, onBack }: {
         </button>
       </div>
 
+      {/* Coal Opening Stock Approval Card */}
+      <div style={{
+        background: coalStockApproved ? '#f0fff4' : '#fffbeb',
+        border: `1.5px solid ${coalStockApproved ? '#86efac' : '#fcd34d'}`,
+        borderRadius: 12,
+        padding: '14px 18px',
+        marginBottom: 16,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 4 }}>
+              🪨 Today's Opening Coal Stock (MT)
+            </div>
+            {suggestedOpening && (
+              <div style={{ fontSize: 11, color: '#666' }}>
+                Suggested from yesterday's closing: <strong>{suggestedOpening} MT</strong>
+              </div>
+            )}
+            {!suggestedOpening && (
+              <div style={{ fontSize: 11, color: '#888' }}>Yesterday's closing not found — enter manually</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="number"
+              step="any"
+              value={coalStockInput}
+              onChange={e => { setCoalStockInput(e.target.value); setCoalStockApproved(false); }}
+              placeholder="e.g. 919.175"
+              style={{
+                padding: '8px 12px',
+                border: '1.5px solid #e0e0e0',
+                borderRadius: 8,
+                fontSize: 14,
+                width: 130,
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={approveOpeningStock}
+              style={{
+                background: coalStockApproved ? '#10b981' : '#0f3460',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '9px 16px',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {coalStockApproved ? '✓ Approved' : '✓ Approve & Set'}
+            </button>
+          </div>
+        </div>
+        {coalStockMsg && (
+          <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{coalStockMsg}</div>
+        )}
+      </div>
+
       {message && <div style={s.msgBox}>{message}</div>}
 
       {/* ── BOILER LOG ── */}
@@ -162,72 +276,72 @@ export default function HODDashboard({ token, onBack }: {
           {loading ? (
             <div style={s.empty}>{loadingMsg}</div>
           ) : boilerEntries.length === 0 ? (
-              <div style={s.empty}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No entries today</div>
-                <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Operators have not submitted yet</div>
-              </div>
-            ) : boilerEntries.map(entry => (
-              <div key={entry.id} style={s.card}>
-                <div style={{ ...s.cardHeader, cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
-                  <div style={s.cardLeft}>
-                    <span style={s.entryId}>Entry #{entry.id}</span>
-                    <span style={{ ...s.shiftBadge }}>Shift {entry.shift}</span>
-                    <span style={s.dateText}>{entry.log_date} · {String(entry.log_time).slice(0, 5)}</span>
-                    {entry.operator_name && <span style={{ fontSize: 12, color: '#666' }}>👤 {entry.operator_name}</span>}
-                  </div>
-                  <span style={{ fontSize: 12, color: '#888' }}>{expandedId === entry.id ? '▲ Hide' : '▼ Show All'}</span>
+            <div style={s.empty}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#444' }}>No entries today</div>
+              <div style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Operators have not submitted yet</div>
+            </div>
+          ) : boilerEntries.map(entry => (
+            <div key={entry.id} style={s.card}>
+              <div style={{ ...s.cardHeader, cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
+                <div style={s.cardLeft}>
+                  <span style={s.entryId}>Entry #{entry.id}</span>
+                  <span style={{ ...s.shiftBadge }}>Shift {entry.shift}</span>
+                  <span style={s.dateText}>{entry.log_date} · {String(entry.log_time).slice(0, 5)}</span>
+                  {entry.operator_name && <span style={{ fontSize: 12, color: '#666' }}>👤 {entry.operator_name}</span>}
                 </div>
-
-                {expandedId === entry.id && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={s.paramGrid}>
-                      <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM" />
-                      <Param label="Steam Flow SEP" value={entry.steam_flow_sep} unit="KG" />
-                      <Param label="Steam Flow REFL" value={entry.steam_flow_refl} unit="KG" />
-                      <Param label="Drum Water Level" value={entry.drum_water_level} unit="%" />
-                      <Param label="Feed Water Temp" value={entry.feed_water_temp} unit="°C" />
-                      <Param label="Bed 1 Top" value={entry.bed1_top_temp} unit="°C" />
-                      <Param label="Bed 1 Bottom" value={entry.bed1_bottom_temp} unit="°C" />
-                      <Param label="Bed 2 Top" value={entry.bed2_top_temp} unit="°C" />
-                      <Param label="Bed 2 Bottom" value={entry.bed2_bottom_temp} unit="°C" />
-                      <Param label="Flue Gas Temp" value={entry.flue_gas_temp} unit="°C" />
-                      <Param label="GAG Filter Temp" value={entry.gag_filter_temp} unit="°C" />
-                      <Param label="Coal Feed Bed1" value={entry.coal_feed_bed1_hz} unit="HZ" />
-                      <Param label="Coal Feed Bed2" value={entry.coal_feed_bed2_hz} unit="HZ" />
-                      <Param label="ID Fan Damper" value={entry.id_fan_damper} unit="%" />
-                      <Param label="FD Fan 1" value={entry.fd_fan1_damper} unit="%" />
-                      <Param label="FD Fan 2" value={entry.fd_fan2_damper} unit="%" />
-                      <Param label="Booster Fan 1" value={entry.booster_fan1} unit="%" />
-                      <Param label="Booster Fan 2" value={entry.booster_fan2} unit="%" />
-                      <Param label="FD Pressure" value={entry.fd_pressure} unit="MM/WC" />
-                    </div>
-                    {entry.cbd_ibd_report && <div style={s.remarksBox}>📋 CBD/IBD: {entry.cbd_ibd_report}</div>}
-                    {entry.breakdown_problem && <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>}
-                    {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
-
-                    {/* Coal & Steam if filled */}
-                    {entry.coal_opening_stock && (
-                      <div style={{ marginTop: 10, background: '#f0f9ff', borderRadius: 8, padding: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#0f3460', marginBottom: 8 }}>🪨 Coal & Steam</div>
-                        <div style={s.paramGrid}>
-                          <Param label="Opening Stock" value={entry.coal_opening_stock} unit="MT" />
-                          <Param label="Consumed SEP" value={entry.coal_consumed_sep} unit="MT" />
-                          <Param label="Consumed REFL" value={entry.coal_consumed_refinery} unit="MT" />
-                          <Param label="Total Coal" value={entry.total_coal_consumed} unit="MT" />
-                          <Param label="Closing Stock" value={entry.closing_stock} unit="MT" />
-                          <Param label="C/S Ratio" value={entry.cs_ratio} unit="" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {entry.breakdown_problem && !expandedId && (
-                  <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>
-                )}
+                <span style={{ fontSize: 12, color: '#888' }}>{expandedId === entry.id ? '▲ Hide' : '▼ Show All'}</span>
               </div>
-            ))}
+
+              {expandedId === entry.id && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={s.paramGrid}>
+                    <Param label="Steam Pressure" value={entry.steam_pressure} unit="KG/CM" />
+                    <Param label="Steam Flow SEP" value={entry.steam_flow_sep} unit="KG" />
+                    <Param label="Steam Flow REFL" value={entry.steam_flow_refl} unit="KG" />
+                    <Param label="Drum Water Level" value={entry.drum_water_level} unit="%" />
+                    <Param label="Feed Water Temp" value={entry.feed_water_temp} unit="°C" />
+                    <Param label="Bed 1 Top" value={entry.bed1_top_temp} unit="°C" />
+                    <Param label="Bed 1 Bottom" value={entry.bed1_bottom_temp} unit="°C" />
+                    <Param label="Bed 2 Top" value={entry.bed2_top_temp} unit="°C" />
+                    <Param label="Bed 2 Bottom" value={entry.bed2_bottom_temp} unit="°C" />
+                    <Param label="Flue Gas Temp" value={entry.flue_gas_temp} unit="°C" />
+                    <Param label="GAG Filter Temp" value={entry.gag_filter_temp} unit="°C" />
+                    <Param label="Coal Feed Bed1" value={entry.coal_feed_bed1_hz} unit="HZ" />
+                    <Param label="Coal Feed Bed2" value={entry.coal_feed_bed2_hz} unit="HZ" />
+                    <Param label="ID Fan Damper" value={entry.id_fan_damper} unit="%" />
+                    <Param label="FD Fan 1" value={entry.fd_fan1_damper} unit="%" />
+                    <Param label="FD Fan 2" value={entry.fd_fan2_damper} unit="%" />
+                    <Param label="Booster Fan 1" value={entry.booster_fan1} unit="%" />
+                    <Param label="Booster Fan 2" value={entry.booster_fan2} unit="%" />
+                    <Param label="FD Pressure" value={entry.fd_pressure} unit="MM/WC" />
+                  </div>
+                  {entry.cbd_ibd_report && <div style={s.remarksBox}>📋 CBD/IBD: {entry.cbd_ibd_report}</div>}
+                  {entry.breakdown_problem && <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>}
+                  {entry.remarks && <div style={s.remarksBox}>💬 {entry.remarks}</div>}
+
+                  {/* Coal & Steam if filled */}
+                  {entry.coal_opening_stock && (
+                    <div style={{ marginTop: 10, background: '#f0f9ff', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f3460', marginBottom: 8 }}>🪨 Coal & Steam</div>
+                      <div style={s.paramGrid}>
+                        <Param label="Opening Stock" value={entry.coal_opening_stock} unit="MT" />
+                        <Param label="Consumed SEP" value={entry.coal_consumed_sep} unit="MT" />
+                        <Param label="Consumed REFL" value={entry.coal_consumed_refinery} unit="MT" />
+                        <Param label="Total Coal" value={entry.total_coal_consumed} unit="MT" />
+                        <Param label="Closing Stock" value={entry.closing_stock} unit="MT" />
+                        <Param label="C/S Ratio" value={entry.cs_ratio} unit="" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {entry.breakdown_problem && !expandedId && (
+                <div style={s.breakdownAlert}>🚨 Breakdown: {entry.breakdown_problem}</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -237,42 +351,42 @@ export default function HODDashboard({ token, onBack }: {
           {loading ? (
             <div style={s.empty}>{loadingMsg}</div>
           ) : powerReports.length === 0 ? <div style={s.empty}>No power reports found</div>
-              : powerReports.map((r: any) => (
-                <div key={r.id} style={s.card}>
-                  <div style={{ ...s.cardHeader, cursor: 'pointer' }}
-                    onClick={() => setExpandedPowerId(expandedPowerId === r.id ? null : r.id)}>
-                    <span style={s.entryId}>📅 {r.reading_date} — Shift {r.shift || 'A'}</span>
-                    <span style={{ fontSize: 12, color: '#888' }}>{expandedPowerId === r.id ? '▲ Hide' : '▼ All Params'}</span>
-                  </div>
-
-                  <div style={s.paramGrid}>
-                    <Param label="Total KWH" value={
-                      (r.sep_units || 0) + (r.prep_units || 0) + (r.solar_units || 0) + (r.boiler_units || 0) +
-                      (r.refinery_units || 0) + (r.etp_units || 0) + (r.packing_units || 0) + (r.admin_units || 0)
-                    } unit="KWH" />
-                    <Param label="Solar" value={r.solar_units} unit="KWH" />
-                    <Param label="MSEDCL" value={r.msedcl_units} unit="KWH" />
-                    <Param label="Power Factor" value={r.power_factor} unit="" />
-                  </div>
-
-                  {expandedPowerId === r.id && (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8 }}>
-                        {[['SEP', 'sep_units'], ['PREP', 'prep_units'], ['Solar', 'solar_units'], ['Silo', 'silo_units'],
-                        ['DOC', 'doc_units'], ['D-Silo', 'dsilo_units'], ['ACM', 'acm_units'], ['Boiler', 'boiler_units'],
-                        ['CHP', 'chp_units'], ['DM Plant', 'dm_units'], ['UG Tank', 'ug_tank_units'], ['Refinery', 'refinery_units'],
-                        ['ETP', 'etp_units'], ['Packing', 'packing_units'], ['Admin', 'admin_units'], ['DG Set', 'dg_units'],
-                        ['MSEDCL', 'msedcl_units']].map(([label, key]) => (
-                          <Param key={key} label={label} value={r[key]} unit="KWH" />
-                        ))}
-                        <Param label="kVAh" value={r.power_kvah} unit="" />
-                        <Param label="Power Factor" value={r.power_factor} unit="" />
-                      </div>
-                      {r.dg_reason && <div style={s.remarksBox}>🛢️ DG: {r.dg_reason}</div>}
-                    </div>
-                  )}
+            : powerReports.map((r: any) => (
+              <div key={r.id} style={s.card}>
+                <div style={{ ...s.cardHeader, cursor: 'pointer' }}
+                  onClick={() => setExpandedPowerId(expandedPowerId === r.id ? null : r.id)}>
+                  <span style={s.entryId}>📅 {r.reading_date} — Shift {r.shift || 'A'}</span>
+                  <span style={{ fontSize: 12, color: '#888' }}>{expandedPowerId === r.id ? '▲ Hide' : '▼ All Params'}</span>
                 </div>
-              ))}
+
+                <div style={s.paramGrid}>
+                  <Param label="Total KWH" value={
+                    (r.sep_units || 0) + (r.prep_units || 0) + (r.solar_units || 0) + (r.boiler_units || 0) +
+                    (r.refinery_units || 0) + (r.etp_units || 0) + (r.packing_units || 0) + (r.admin_units || 0)
+                  } unit="KWH" />
+                  <Param label="Solar" value={r.solar_units} unit="KWH" />
+                  <Param label="MSEDCL" value={r.msedcl_units} unit="KWH" />
+                  <Param label="Power Factor" value={r.power_factor} unit="" />
+                </div>
+
+                {expandedPowerId === r.id && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8 }}>
+                      {[['SEP', 'sep_units'], ['PREP', 'prep_units'], ['Solar', 'solar_units'], ['Silo', 'silo_units'],
+                      ['DOC', 'doc_units'], ['D-Silo', 'dsilo_units'], ['ACM', 'acm_units'], ['Boiler', 'boiler_units'],
+                      ['CHP', 'chp_units'], ['DM Plant', 'dm_units'], ['UG Tank', 'ug_tank_units'], ['Refinery', 'refinery_units'],
+                      ['ETP', 'etp_units'], ['Packing', 'packing_units'], ['Admin', 'admin_units'], ['DG Set', 'dg_units'],
+                      ['MSEDCL', 'msedcl_units']].map(([label, key]) => (
+                        <Param key={key} label={label} value={r[key]} unit="KWH" />
+                      ))}
+                      <Param label="kVAh" value={r.power_kvah} unit="" />
+                      <Param label="Power Factor" value={r.power_factor} unit="" />
+                    </div>
+                    {r.dg_reason && <div style={s.remarksBox}>🛢️ DG: {r.dg_reason}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       )}
 

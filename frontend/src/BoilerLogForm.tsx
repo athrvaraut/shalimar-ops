@@ -127,35 +127,35 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
   }, [form.log_date]);
 
   useEffect(() => {
-  const autoFillSteam = async () => {
-    if (coalLocked) return;
-    const today = form.log_date;
-    try {
-      const res = await fetch(
-        `https://shalimar-ops.onrender.com/boiler-log/date/${today}`,
-        { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
-      );
-      if (res.ok) {
-        const logs = await res.json();
-        if (Array.isArray(logs) && logs.length > 0) {
-          const sepFlows = logs.map((l: any) => l.steam_flow_sep).filter(v => v != null && v > 0);
-          const reflFlows = logs.map((l: any) => l.steam_flow_refl).filter(v => v != null && v > 0);
-          
-          if (sepFlows.length > 0) {
-            // Opening = MIN (meter starts low), Closing = MAX (meter accumulates)
-            set('steam_sep_opening', String(Math.min(...sepFlows)));
-            set('steam_sep_closing', String(Math.max(...sepFlows)));
-          }
-          if (reflFlows.length > 0) {
-            set('steam_refl_opening', String(Math.min(...reflFlows)));
-            set('steam_refl_closing', String(Math.max(...reflFlows)));
+    const autoFillSteam = async () => {
+      if (coalLocked) return;
+      const today = form.log_date;
+      try {
+        const res = await fetch(
+          `https://shalimar-ops.onrender.com/boiler-log/date/${today}`,
+          { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
+        );
+        if (res.ok) {
+          const logs = await res.json();
+          if (Array.isArray(logs) && logs.length > 0) {
+            const sepFlows = logs.map((l: any) => l.steam_flow_sep).filter(v => v != null && v > 0);
+            const reflFlows = logs.map((l: any) => l.steam_flow_refl).filter(v => v != null && v > 0);
+
+            if (sepFlows.length > 0) {
+              // Opening = MIN (meter starts low), Closing = MAX (meter accumulates)
+              set('steam_sep_opening', String(Math.min(...sepFlows)));
+              set('steam_sep_closing', String(Math.max(...sepFlows)));
+            }
+            if (reflFlows.length > 0) {
+              set('steam_refl_opening', String(Math.min(...reflFlows)));
+              set('steam_refl_closing', String(Math.max(...reflFlows)));
+            }
           }
         }
-      }
-    } catch {}
-  };
-  autoFillSteam();
-}, [form.log_date, coalLocked]);
+      } catch { }
+    };
+    autoFillSteam();
+  }, [form.log_date, coalLocked]);
 
   const validate = () => {
     const w: string[] = [];
@@ -377,9 +377,7 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
           )}
 
           {/* All coal fields with disabled={coalLocked} */}
-          <div style={s.row2}>
-            <NumInput label="Opening Coal Stock (MT)" value={form.coal_opening_stock}
-              onChange={v => set('coal_opening_stock', v)} disabled={coalLocked} />
+          <div style={s.field}>
             <NumInput label="Coal Arrival Indian (MT)" value={form.coal_arrival}
               onChange={v => set('coal_arrival', v)} disabled={coalLocked} />
           </div>
@@ -398,22 +396,6 @@ export default function BoilerLogForm({ token, onBack }: BoilerLogFormProps) {
                 <option value="no">No — Problem</option>
               </select>
             </div>
-          </div>
-          <div style={s.row2}>
-            <NumInput label="SEP Steam Opening (KG)"
-              value={form.steam_sep_opening} onChange={v => set('steam_sep_opening', v)}
-              disabled={coalLocked} />
-            <NumInput label="SEP Steam Closing (KG)"
-              value={form.steam_sep_closing} onChange={v => set('steam_sep_closing', v)}
-              disabled={coalLocked} />
-          </div>
-          <div style={s.row2}>
-            <NumInput label="REFL Steam Opening (KG)"
-              value={form.steam_refl_opening} onChange={v => set('steam_refl_opening', v)}
-              disabled={coalLocked} />
-            <NumInput label="REFL Steam Closing (KG)"
-              value={form.steam_refl_closing} onChange={v => set('steam_refl_closing', v)}
-              disabled={coalLocked} />
           </div>
         </div>
 

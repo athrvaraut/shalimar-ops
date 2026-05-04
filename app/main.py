@@ -621,36 +621,44 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         for i, h in enumerate(headers_coal, 2):
             cell(4, i, h, bold, blue_fill, center, border)
 
-        # ROW 5 - Coal value
-        coal_vals = [
-            opening_stock,       # B5
-            arrival_ind,         # C5
-            arrival_imp or 0,    # D5
-            auto_coal_sep,       # E5 (Auto-calculated!)
-            auto_coal_refl,      # F5 (Auto-calculated!)
-            coal_thermic or 0,   # G5 
-            auto_total_coal,     # H5 (Auto-calculated!)
-            auto_closing,        # I5 (Auto-calculated!)
-            ""                   # J5 (REMARKS)
-        ]
-        
-        for i, v in enumerate(coal_vals, 2):
-            cell(5, i, v, align=center, b=border)
+        # ── ROW 5 — Coal stock table (raw inputs + formula cells) ──
+        cell(5, 2, opening_stock, align=center, b=border)       # B5: opening stock (raw)
+        cell(5, 3, arrival_ind, align=center, b=border)         # C5: arrival indian (raw)
+        cell(5, 4, arrival_imp or 0, align=center, b=border)    # D5: arrival imported (raw)
+
+        # E5: Coal SEP = SEP_consumed / (C/S_ratio * 1000)
+        c = ws.cell(row=5, column=5, value='=IF(I17>0,E13/(I17*1000),"")')
+        c.alignment = center; c.border = border
+
+        # F5: Coal REF = Coal_for_steam_mt - Coal_SEP
+        c = ws.cell(row=5, column=6, value='=IF(I8>0,I8/1000-E5,"")')
+        c.alignment = center; c.border = border
+
+        cell(5, 7, coal_thermic or 0, align=center, b=border)   # G5: thermic (raw, manual)
+
+        # H5: Total Coal = E5 + F5 + G5
+        c = ws.cell(row=5, column=8, value='=E5+F5+G5')
+        c.font = bold; c.alignment = center; c.border = border
+
+        # I5: Closing Stock = B5 + C5 + D5 - H5
+        c = ws.cell(row=5, column=9, value='=B5+C5+D5-H5')
+        c.alignment = center; c.border = border
+
+        cell(5, 10, '', align=center, b=border)  # J5: remarks blank
 
         ws.append([])  # row 6 empty
         
-        # ROW 7 - Coal bunker (Fixed with all borders)
+        # ── ROW 7-9 — Coal bunker section & Steam Pressure ──
         cell(7, 2, "PERTICULAR", bold, blue_fill, left, border)
-        cell(7, 3, None, b=border) # Border for empty C
+        cell(7, 3, None, b=border)
         cell(7, 4, "COAL IN BUNKER (%)", bold, blue_fill, center, border)
         cell(7, 5, "REMARKS", bold, blue_fill, center, border)
-        cell(7, 6, None, b=border) # Border for empty F
-        cell(7, 7, None, b=border) # Border for empty G
-        cell(7, 8, None, b=border) # Border for empty H
-        cell(7, 9, "COAL FOR STEAM", bold, align=center, b=border)
-        cell(7, 10, None, b=border) # Border for empty J
+        cell(7, 6, None, b=border)
+        cell(7, 7, None, b=border)
+        cell(7, 8, None, b=border)
+        cell(7, 9, "COAL FOR STEAM (KG)", bold, align=center, b=border)
+        cell(7, 10, None, b=border)
 
-        # ROW 8 - Data
         cell(8, 2, "COAL BUNKER STATUS", bold, align=left, b=border)
         cell(8, 3, None, b=border)
         cell(8, 4, coal_bunker, align=center, b=border)
@@ -658,11 +666,16 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         cell(8, 6, None, b=border)
         cell(8, 7, None, b=border)
         cell(8, 8, None, b=border)
-        cell(8, 9, coal_for_steam, Font(bold=True), align=center, b=border)
-        
-        # ROW 9 - Pressure
+
+        # I8: Coal For Steam = avg_feeding (from I13) * 60 * 24
+        # Formula: =IF(I13>0,I13*60*24,"")
+        c = ws.cell(row=8, column=9, value='=IF(I13>0,I13*60*24,"")')
+        c.font = bold; c.alignment = center; c.border = border
+
         cell(9, 2, "STEAM PRESSURE PROBLEM", bold, align=left, b=border)
         cell(9, 3, None, b=border)
+        
+        # Steam pressure conditional formatting
         sp_val = "NO" if steam_pressure_ok else "YES ⚠️"
         sp_fill = green_fill if steam_pressure_ok else PatternFill("solid", fgColor="FADBD8")
         cell(9, 4, sp_val, Font(bold=True), sp_fill, center, border)
@@ -670,61 +683,78 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
 
         ws.append([])  # row 10 empty
         
-        # ROW 11 - Steam SEP header
+        # ── ROW 11-13 — SEP Steam Meter ──
         ws.merge_cells("B11:J11")
         cell(11, 2, "STEAM FLOW METER READING (SEP)", Font(bold=True), blue_fill, center, border)
 
         steam_headers = [
             "OPENING READING IN KG", "CLOSING READING IN KG", "",
-            "STEAM COSUMPTION IN KG", "", "FEED WATER TEMP. (°C)", "",
-            "AVERAGE FEEDING", ""
+            "STEAM CONSUMPTION IN KG", "", "FEED WATER TEMP. (°C)", "",
+            "AVERAGE FEEDING (HZ)", ""
         ]
+        
         for i, h in enumerate(steam_headers, 2):
             if h:
                 cell(12, i, h, bold, blue_fill, center, border)
             else:
                 cell(12, i, "", None, blue_fill, None, border)
 
-        # FIXED ROW 13 - Shifts data to Col 7 (G)
-        if report:
-            cell(13, 2, sep_opening, align=center, b=border)
-            cell(13, 3, sep_closing, align=center, b=border)
-            cell(13, 4, None, align=center, b=border)
-            cell(13, 5, sep_consumed, Font(bold=True), yellow_fill, center, border)
-            cell(13, 6, None, align=center, b=border)
-            cell(13, 7, avg_feed_water, align=center, b=border)
-            cell(13, 8, None, align=center, b=border)
-            cell(13, 9, avg_feeding, align=center, b=border)
+        # Row 13: Raw meter readings + formula for consumption
+        cell(13, 2, sep_opening, align=center, b=border)           # B13: SEP opening
+        cell(13, 3, sep_closing, align=center, b=border)           # C13: SEP closing
+        cell(13, 4, None, align=center, b=border)
+        
+        # E13: SEP Consumed = C13 - B13
+        # Added an IF statement to keep it clean if the cells are empty
+        c = ws.cell(row=13, column=5, value='=IF(C13>0, C13-B13, 0)')
+        c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
+        
+        cell(13, 6, None, align=center, b=border)
+        cell(13, 7, avg_feed_water, align=center, b=border)        # G13: Feed water
+        cell(13, 8, None, align=center, b=border)
+        cell(13, 9, avg_feeding, align=center, b=border)           # I13: Average feeding
 
-        ws.append([])  # row 14
+        ws.append([])  # row 14 empty
 
-        # ROW 15 - Steam REFL header 
+        # ── ROW 15-17 REFL Steam ──
         ws.merge_cells("B15:J15")
         cell(15, 2, "STEAM FLOW METER READING (REFINERY)", Font(bold=True), blue_fill, center, border)
 
         refl_headers = [
             "OPENING READING IN KG", "CLOSING READING IN KG", "",
-            "STEAM COSUMPTION IN KG", "", "TOTAL STEAM", "",
+            "STEAM COSUMPTION IN KG", "", "TOTAL STEAM (KG)", "",
             "STEAM TO COAL RATIO", ""
         ]
+        
         for i, h in enumerate(refl_headers, 2):
             if h:
                 cell(16, i, h, bold, blue_fill, center, border)
             else:
                 cell(16, i, "", None, blue_fill, None, border)
 
-        # FIXED ROW 17 - Shifts Total Steam to 7 (G) and CS Ratio to 9 (I)
+        # ── ROW 17: raw readings + formula for consumption, total steam, C/S ratio ──
         if report:
-            cell(17, 2, refl_opening, align=center, b=border)
-            cell(17, 3, refl_closing, align=center, b=border)
+            cell(17, 2, refl_opening, align=center, b=border)           # B17: REFL opening (raw)
+            cell(17, 3, refl_closing, align=center, b=border)           # C17: REFL closing (raw)
             cell(17, 4, None, align=center, b=border)
-            cell(17, 5, refl_consumed, Font(bold=True), yellow_fill, center, border)
+            
+            # E17: REFL Consumed = C17 - B17
+            c = ws.cell(row=17, column=5, value='=C17-B17')
+            c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
+            
             cell(17, 6, None, align=center, b=border)
-            cell(17, 7, total_steam, Font(bold=True), yellow_fill, center, border)
+            
+            # G17: Total Steam = E13 + E17
+            c = ws.cell(row=17, column=7, value='=E13+E17')
+            c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
+            
             cell(17, 8, None, align=center, b=border)
-                            
-            cs_fill = green_fill if (5.0 <= actual_cs_ratio <= 5.6) else PatternFill("solid", fgColor="FADBD8")
-            cell(17, 9, actual_cs_ratio, Font(bold=True), cs_fill, center, border)
+            
+            # I17: C/S Ratio = Total Steam / Coal For Steam  = G17 / I8
+            c = ws.cell(row=17, column=9, value='=IF(I8>0,G17/I8,"")')
+            cs_fill = green_fill  # color set at render time, formula handles value
+            c.font = bold; c.fill = cs_fill; c.alignment = center; c.border = border
+            c.number_format = '0.00'
 
         # Column widths matching father's layout
         col_widths = {
@@ -1342,6 +1372,37 @@ def get_logs_by_date(date: str, db: Session = Depends(get_db),
         "ORDER BY log_time ASC"
     ), {"d": date}).mappings().all()
     return [dict(r) for r in results]
+
+@app.put("/daily-report/{date}/opening")
+def set_opening_stock(
+    date: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role("hod"))
+):
+    from sqlalchemy import text
+    opening = float(payload.get("opening_stock", 0))
+    
+    existing = db.execute(text(
+        "SELECT id FROM daily_coal_steam WHERE report_date::text = :d LIMIT 1"
+    ), {"d": date}).mappings().fetchone()
+    
+    if existing:
+        db.execute(text(
+            "UPDATE daily_coal_steam SET opening_coal_stock = :o WHERE report_date::text = :d"
+        ), {"o": opening, "d": date})
+    else:
+        db.execute(text("""
+            INSERT INTO daily_coal_steam (report_date, opening_coal_stock,
+              coal_arrival_indian, coal_arrival_imported, coal_consumed_sep,
+              coal_consumed_refinery, coal_thermic, total_coal_consumed,
+              closing_stock, steam_sep_opening, steam_sep_closing, steam_sep_consumed,
+              steam_refl_opening, steam_refl_closing, steam_refl_consumed,
+              total_steam, cs_ratio)
+            VALUES (:d::date, :o, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+        """), {"d": date, "o": opening})
+    db.commit()
+    return {"message": "Opening stock set", "opening_stock": opening, "date": date}
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
