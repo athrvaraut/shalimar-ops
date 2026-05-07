@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from fastapi.responses import StreamingResponse
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1403,6 +1404,155 @@ def set_opening_stock(
         """), {"d": date, "o": opening})
     db.commit()
     return {"message": "Opening stock set", "opening_stock": opening, "date": date}
+
+    # ─── DAILY ENTRY (SIMPLIFIED) ────────────────────────────
+
+@app.post("/daily-entry")
+def create_daily_entry(data: dict, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    import json
+    from decimal import Decimal
+
+    # Auto-calculate coal
+    sep = data.get('coal_consumed_sep') or 0
+    refl = data.get('coal_consumed_refinery') or 0
+    thermic = data.get('coal_thermic') or 0
+    arrival_in = data.get('coal_arrival_indian') or 0
+    arrival_im = data.get('coal_arrival_imported') or 0
+    opening = data.get('opening_coal_stock') or 0
+    total_coal = sep + refl + thermic
+    closing = opening + arrival_in + arrival_im - total_coal
+
+    # Auto-calculate steam
+    sep_open = data.get('steam_sep_opening') or 0
+    sep_close = data.get('steam_sep_closing') or 0
+    refl_open = data.get('steam_refl_opening') or 0
+    refl_close = data.get('steam_refl_closing') or 0
+    steam_sep = sep_close - sep_open
+    steam_refl = refl_close - refl_open
+    total_steam = steam_sep + steam_refl
+    cs = round(total_steam / total_coal, 3) if total_coal > 0 else 0
+
+    # Auto-calculate averages from arrays
+    fw_temps = data.get('feed_water_temps', [])
+    fd1 = data.get('fd_fan1_dampers', [])
+    fd2 = data.get('fd_fan2_dampers', [])
+    fw_vals = [x for x in fw_temps if x is not None and x != '']
+    fd1_vals = [x for x in fd1 if x is not None and x != '']
+    fd2_vals = [x for x in fd2 if x is not None and x != '']
+    avg_fw = round(sum(fw_vals)/len(fw_vals), 2) if fw_vals else None
+    avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
+    avg_fd2 = round(sum(fd2_vals)/len(fd2_vals), 2) if fd2_vals else None
+
+    row = db.execute(
+        text("""
+        INSERT INTO daily_entries (
+            entry_date, operator_name,
+            opening_coal_stock, coal_arrival_indian, coal_arrival_imported,
+            coal_consumed_sep, coal_consumed_refinery, coal_thermic,
+            total_coal_consumed, closing_stock, coal_bunker_pct, steam_pressure_ok, coal_rate_per_mt,
+            steam_sep_opening, steam_sep_closing, steam_sep_consumed,
+            steam_refl_opening, steam_refl_closing, steam_refl_consumed,
+            total_steam, cs_ratio,
+            feed_water_temps, avg_feed_water,
+            fd_fan1_dampers, avg_fd_fan1,
+            fd_fan2_dampers, avg_fd_fan2,
+            remarks, submitted_by
+        ) VALUES (
+            :entry_date, :operator_name,
+            :opening_coal_stock, :coal_arrival_indian, :coal_arrival_imported,
+            :coal_consumed_sep, :coal_consumed_refinery, :coal_thermic,
+            :total_coal_consumed, :closing_stock, :coal_bunker_pct, :steam_pressure_ok, :coal_rate_per_mt,
+            :steam_sep_opening, :steam_sep_closing, :steam_sep_consumed,
+            :steam_refl_opening, :steam_refl_closing, :steam_refl_consumed,
+            :total_steam, :cs_ratio,
+            :feed_water_temps, :avg_feed_water,
+            :fd_fan1_dampers, :avg_fd_fan1,
+            :fd_fan2_dampers, :avg_fd_fan2,
+            :remarks, :submitted_by
+        )
+        ON CONFLICT (entry_date) DO UPDATE SET
+            operator_name=EXCLUDED.operator_name,
+            opening_coal_stock=EXCLUDED.opening_coal_stock,
+            coal_arrival_indian=EXCLUDED.coal_arrival_indian,
+            coal_arrival_imported=EXCLUDED.coal_arrival_imported,
+            coal_consumed_sep=EXCLUDED.coal_consumed_sep,
+            coal_consumed_refinery=EXCLUDED.coal_consumed_refinery,
+            coal_thermic=EXCLUDED.coal_thermic,
+            total_coal_consumed=EXCLUDED.total_coal_consumed,
+            closing_stock=EXCLUDED.closing_stock,
+            coal_bunker_pct=EXCLUDED.coal_bunker_pct,
+            steam_pressure_ok=EXCLUDED.steam_pressure_ok,
+            coal_rate_per_mt=EXCLUDED.coal_rate_per_mt,
+            steam_sep_opening=EXCLUDED.steam_sep_opening,
+            steam_sep_closing=EXCLUDED.steam_sep_closing,
+            steam_sep_consumed=EXCLUDED.steam_sep_consumed,
+            steam_refl_opening=EXCLUDED.steam_refl_opening,
+            steam_refl_closing=EXCLUDED.steam_refl_closing,
+            steam_refl_consumed=EXCLUDED.steam_refl_consumed,
+            total_steam=EXCLUDED.total_steam,
+            cs_ratio=EXCLUDED.cs_ratio,
+            feed_water_temps=EXCLUDED.feed_water_temps,
+            avg_feed_water=EXCLUDED.avg_feed_water,
+            fd_fan1_dampers=EXCLUDED.fd_fan1_dampers,
+            avg_fd_fan1=EXCLUDED.avg_fd_fan1,
+            fd_fan2_dampers=EXCLUDED.fd_fan2_dampers,
+            avg_fd_fan2=EXCLUDED.avg_fd_fan2,
+            remarks=EXCLUDED.remarks,
+            updated_at=now()
+        RETURNING id
+        """),
+        {
+            "entry_date": data.get('entry_date'),
+            "operator_name": data.get('operator_name'),
+            "opening_coal_stock": opening,
+            "coal_arrival_indian": arrival_in,
+            "coal_arrival_imported": arrival_im,
+            "coal_consumed_sep": sep,
+            "coal_consumed_refinery": refl,
+            "coal_thermic": thermic,
+            "total_coal_consumed": round(total_coal, 3),
+            "closing_stock": round(closing, 3),
+            "coal_bunker_pct": data.get('coal_bunker_pct'),
+            "steam_pressure_ok": data.get('steam_pressure_ok', True),
+            "coal_rate_per_mt": data.get('coal_rate_per_mt'),
+            "steam_sep_opening": sep_open,
+            "steam_sep_closing": sep_close,
+            "steam_sep_consumed": round(steam_sep, 3),
+            "steam_refl_opening": refl_open,
+            "steam_refl_closing": refl_close,
+            "steam_refl_consumed": round(steam_refl, 3),
+            "total_steam": round(total_steam, 3),
+            "cs_ratio": cs,
+            "feed_water_temps": json.dumps(fw_temps),
+            "avg_feed_water": avg_fw,
+            "fd_fan1_dampers": json.dumps(fd1),
+            "avg_fd_fan1": avg_fd1,
+            "fd_fan2_dampers": json.dumps(fd2),
+            "avg_fd_fan2": avg_fd2,
+            "remarks": data.get('remarks'),
+            "submitted_by": str(current_user.id),
+        }
+    )
+    db.commit()
+    return {"message": "Saved", "id": row.fetchone()[0],
+            "total_coal": round(total_coal,3), "closing_stock": round(closing,3),
+            "total_steam": round(total_steam,3), "cs_ratio": cs,
+            "avg_feed_water": avg_fw, "avg_fd_fan1": avg_fd1, "avg_fd_fan2": avg_fd2}
+
+@app.get("/daily-entry/{date}")
+def get_daily_entry(date: str, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    import json
+    result = db.execute(text("SELECT * FROM daily_entries WHERE entry_date = :d"), {"d": date}).fetchone()
+    if not result:
+        raise HTTPException(status_code=404, detail="No entry for this date")
+    row = dict(result._mapping)
+    for field in ['feed_water_temps','fd_fan1_dampers','fd_fan2_dampers']:
+        if row.get(field):
+            try: row[field] = json.loads(row[field])
+            except: row[field] = []
+    return row
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 
