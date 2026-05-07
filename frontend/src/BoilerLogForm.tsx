@@ -61,7 +61,7 @@ export default function BoilerLogForm({ token, onBack }: Props) {
     if (!date) return;
     const authToken = token || localStorage.getItem('token') || '';
     setFetchingDate(true);
-    fetch(`http://127.0.0.1:8000/daily-entry/${date}`, {
+    fetch(`https://shalimar-ops.onrender.com/daily-entry/${date}`, {
       headers: { 'Authorization': `Bearer ${authToken}` }
     }).then(r => {
       if (r.ok) return r.json();
@@ -127,7 +127,7 @@ export default function BoilerLogForm({ token, onBack }: Props) {
       remarks
     };
     try {
-      const res = await fetch('http://127.0.0.1:8000/daily-entry', {
+      const res = await fetch('https://shalimar-ops.onrender.com/daily-entry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
         body: JSON.stringify(payload)
