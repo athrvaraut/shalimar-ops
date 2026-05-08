@@ -41,8 +41,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://shalimar-ops-slxa.vercel.app",
-        "https://*.vercel.app",
+        "https://shalimar-ops-slxa.vercel.app",  # ADD THIS
     ],
     allow_credentials=True,
     allow_methods=["*"],

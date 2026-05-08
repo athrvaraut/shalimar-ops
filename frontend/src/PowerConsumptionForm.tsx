@@ -21,19 +21,17 @@ const SECTIONS = [
   { key: 'packing_units', label: 'Packing' },
   { key: 'admin_units', label: 'Admin' },
   { key: 'dg_units', label: 'DG Set' },
-  { key: 'msedcl_units', label: 'MSEDCL' },
 ];
 
 export default function PowerConsumptionForm({ token, onBack }: Props) {
   const initForm = () => {
     const base: any = {
-      shift: 'A',
       operator_name: '',
       msedcl_kwh: '',
       msedcl_kvah: '',
       reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
-      dg_generated_units: '', dg_reason: '',
+      other_consumed: '', dg_generated_units: '', dg_reason: '',
 
       // Voltages
       voltage_r_morning: '', voltage_y_morning: '', voltage_b_morning: '',
@@ -70,7 +68,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
     const numFields = [
       ...SECTIONS.map(s => s.key),
       'power_kvah', 'power_factor', 'diesel_opening_stock',
-      'diesel_received', 'diesel_consumed', 'dg_generated_units',
+      'diesel_received', 'diesel_consumed', 'other_consumed', 'dg_generated_units',
       'voltage_r_morning', 'voltage_y_morning', 'voltage_b_morning',
       'voltage_r_evening', 'voltage_y_evening', 'voltage_b_evening',
       'current_l1', 'current_l2', 'current_l3'
@@ -126,15 +124,6 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
               <label style={s.label}>Date *</label>
               <input style={s.input} type="date" value={form.reading_date}
                 onChange={e => set('reading_date', e.target.value)} required />
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Shift *</label>
-              <select style={s.select} value={form.shift}
-                onChange={e => set('shift', e.target.value)}>
-                <option value="A">Shift A (7AM–3PM)</option>
-                <option value="B">Shift B (3PM–11PM)</option>
-                <option value="C">Shift C (11PM–7AM)</option>
-              </select>
             </div>
             <div style={s.field}>
               <label style={s.label}>Operator Name *</label>
@@ -205,22 +194,6 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
                 } />
             </div>
           </div>
-          <div style={{ ...s.row2, marginTop: 10 }}>
-            <div style={s.field}>
-              <label style={s.label}>MSEDCL Units (KWH) <span style={{ fontWeight: 400, color: '#888' }}>from meter</span></label>
-              <input style={s.input} type="number" step="any"
-                value={form.msedcl_units}
-                onChange={e => set('msedcl_units', e.target.value)}
-                placeholder="MSEDCL KWH reading" />
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>MSEDCL KVAh <span style={{ fontWeight: 400, color: '#888' }}>if separate meter</span></label>
-              <input style={s.input} type="number" step="any"
-                value={form.msedcl_kvah}
-                onChange={e => set('msedcl_kvah', e.target.value)}
-                placeholder="—" />
-            </div>
-          </div>
         </div>
 
         {/* DG / Diesel */}
@@ -240,10 +213,16 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
                 onChange={e => set('diesel_received', e.target.value)} placeholder="—" />
             </div>
             <div style={s.field}>
-              <label style={s.label}>Diesel Consumed (L)</label>
+              <label style={s.label}>D.G. Consumption (L)</label>
               <input style={s.input} type="number" step="any"
                 value={form.diesel_consumed}
                 onChange={e => set('diesel_consumed', e.target.value)} placeholder="—" />
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Other Consumption (L)</label>
+              <input style={s.input} type="number" step="any"
+                value={form.other_consumed}
+                onChange={e => set('other_consumed', e.target.value)} placeholder="—" />
             </div>
             <div style={s.field}>
               <label style={s.label}>DG Units Generated</label>

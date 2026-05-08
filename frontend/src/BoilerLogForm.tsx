@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-const TIME_SLOTS = ['07:00','09:00','11:00','13:00','15:00','17:00',
-                    '19:00','21:00','23:00','01:00','03:00','05:00'];
+const TIME_SLOTS = ['07:00', '09:00', '11:00', '13:00', '15:00', '17:00',
+  '19:00', '21:00', '23:00', '01:00', '03:00', '05:00'];
 
 const today = () => new Date().toISOString().split('T')[0];
 
-const avg = (arr: (number|null)[]) => {
+const avg = (arr: (number | null)[]) => {
   const vals = arr.filter(x => x !== null && x !== undefined && !isNaN(x as number)) as number[];
-  return vals.length ? Math.round((vals.reduce((a,b) => a+b, 0) / vals.length) * 100) / 100 : null;
+  return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100 : null;
 };
 
 interface Props { token: string; onBack: () => void; }
@@ -16,7 +16,7 @@ export default function BoilerLogForm({ token, onBack }: Props) {
   const [date, setDate] = useState(today());
   const [operatorName, setOperatorName] = useState('');
   const [locked, setLocked] = useState(false);
-  const [existingId, setExistingId] = useState<number|null>(null);
+  const [existingId, setExistingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingDate, setFetchingDate] = useState(false);
   const [success, setSuccess] = useState('');
@@ -24,9 +24,10 @@ export default function BoilerLogForm({ token, onBack }: Props) {
 
   // Coal & Steam
   const [coal, setCoal] = useState({
-    opening_coal_stock: '', coal_arrival_indian: '', coal_arrival_imported: '',
-    coal_consumed_sep: '', coal_consumed_refinery: '', coal_thermic: '',
-    coal_bunker_pct: '', steam_pressure_ok: 'true', coal_rate_per_mt: ''
+    coal_arrival_indian: '',
+    coal_thermic: '',
+    coal_bunker_pct: '',
+    steam_pressure_ok: 'true'
   });
 
   // Steam Flow
@@ -42,12 +43,9 @@ export default function BoilerLogForm({ token, onBack }: Props) {
   const [remarks, setRemarks] = useState('');
 
   // Live calculations
-  const totalCoal = (parseFloat(coal.coal_consumed_sep)||0) + (parseFloat(coal.coal_consumed_refinery)||0) + (parseFloat(coal.coal_thermic)||0);
-  const closingStock = (parseFloat(coal.opening_coal_stock)||0) + (parseFloat(coal.coal_arrival_indian)||0) + (parseFloat(coal.coal_arrival_imported)||0) - totalCoal;
-  const steamSepConsumed = (parseFloat(steam.steam_sep_closing)||0) - (parseFloat(steam.steam_sep_opening)||0);
-  const steamReflConsumed = (parseFloat(steam.steam_refl_closing)||0) - (parseFloat(steam.steam_refl_opening)||0);
+  const steamSepConsumed = (parseFloat(steam.steam_sep_closing) || 0) - (parseFloat(steam.steam_sep_opening) || 0);
+  const steamReflConsumed = (parseFloat(steam.steam_refl_closing) || 0) - (parseFloat(steam.steam_refl_opening) || 0);
   const totalSteam = steamSepConsumed + steamReflConsumed;
-  const csRatio = totalCoal > 0 ? Math.round((totalSteam / totalCoal) * 1000) / 1000 : 0;
 
   const fwNums = feedWater.map(x => x !== '' ? parseFloat(x) : null);
   const fd1Nums = fd1.map(x => x !== '' ? parseFloat(x) : null);
@@ -71,15 +69,10 @@ export default function BoilerLogForm({ token, onBack }: Props) {
       setExistingId(data.id);
       setOperatorName(data.operator_name || '');
       setCoal({
-        opening_coal_stock: data.opening_coal_stock ?? '',
         coal_arrival_indian: data.coal_arrival_indian ?? '',
-        coal_arrival_imported: data.coal_arrival_imported ?? '',
-        coal_consumed_sep: data.coal_consumed_sep ?? '',
-        coal_consumed_refinery: data.coal_consumed_refinery ?? '',
         coal_thermic: data.coal_thermic ?? '',
         coal_bunker_pct: data.coal_bunker_pct ?? '',
         steam_pressure_ok: data.steam_pressure_ok ? 'true' : 'false',
-        coal_rate_per_mt: data.coal_rate_per_mt ?? ''
       });
       setSteam({
         steam_sep_opening: data.steam_sep_opening ?? '',
@@ -100,10 +93,11 @@ export default function BoilerLogForm({ token, onBack }: Props) {
       setExistingId(null);
       // Reset form
       setOperatorName('');
-      setCoal({ opening_coal_stock:'', coal_arrival_indian:'', coal_arrival_imported:'',
-        coal_consumed_sep:'', coal_consumed_refinery:'', coal_thermic:'',
-        coal_bunker_pct:'', steam_pressure_ok:'true', coal_rate_per_mt:'' });
-      setSteam({ steam_sep_opening:'', steam_sep_closing:'', steam_refl_opening:'', steam_refl_closing:'' });
+      setCoal({
+        coal_arrival_indian: '', coal_thermic: '',
+        coal_bunker_pct: '', steam_pressure_ok: 'true'
+      });
+      setSteam({ steam_sep_opening: '', steam_sep_closing: '', steam_refl_opening: '', steam_refl_closing: '' });
       setFeedWater(Array(12).fill(''));
       setFd1(Array(12).fill(''));
       setFd2(Array(12).fill(''));
@@ -116,11 +110,18 @@ export default function BoilerLogForm({ token, onBack }: Props) {
     setLoading(true); setError(''); setSuccess('');
     const authToken = token || localStorage.getItem('token') || '';
     const payload = {
-      entry_date: date, operator_name: operatorName,
-      ...Object.fromEntries(Object.entries(coal).map(([k,v]) =>
-        k === 'steam_pressure_ok' ? [k, v === 'true'] : [k, v !== '' ? parseFloat(v as string) : null]
-      )),
-      ...Object.fromEntries(Object.entries(steam).map(([k,v]) => [k, v !== '' ? parseFloat(v) : null])),
+      entry_date: date,
+      operator_name: operatorName,
+      opening_coal_stock: 0,
+      coal_arrival_indian: parseFloat(coal.coal_arrival_indian) || 0,
+      coal_arrival_imported: 0,
+      coal_consumed_sep: 0,
+      coal_consumed_refinery: 0,
+      coal_thermic: parseFloat(coal.coal_thermic) || 0,
+      coal_bunker_pct: parseFloat(coal.coal_bunker_pct) || null,
+      steam_pressure_ok: coal.steam_pressure_ok === 'true',
+      coal_rate_per_mt: null,
+      ...Object.fromEntries(Object.entries(steam).map(([k, v]) => [k, v !== '' ? parseFloat(v) : null])),
       feed_water_temps: fwNums,
       fd_fan1_dampers: fd1Nums,
       fd_fan2_dampers: fd2Nums,
@@ -144,8 +145,8 @@ export default function BoilerLogForm({ token, onBack }: Props) {
     finally { setLoading(false); }
   };
 
-  const C = (field: keyof typeof coal, val: string) => setCoal(p => ({...p, [field]: val}));
-  const S = (field: keyof typeof steam, val: string) => setSteam(p => ({...p, [field]: val}));
+  const C = (field: keyof typeof coal, val: string) => setCoal(p => ({ ...p, [field]: val }));
+  const S = (field: keyof typeof steam, val: string) => setSteam(p => ({ ...p, [field]: val }));
 
   return (
     <div style={s.page}>
@@ -173,12 +174,12 @@ export default function BoilerLogForm({ token, onBack }: Props) {
           <div style={s.sectionTitle}>📋 Entry Details</div>
           <div style={s.row2}>
             <Field label="Date *">
-              <input style={{...s.input, ...(locked?s.locked:{})}} type="date"
+              <input style={{ ...s.input, ...(locked ? s.locked : {}) }} type="date"
                 value={date} onChange={e => setDate(e.target.value)}
                 disabled={locked} required />
             </Field>
             <Field label="Operator Name *">
-              <input style={{...s.input, ...(locked?s.locked:{})}} type="text"
+              <input style={{ ...s.input, ...(locked ? s.locked : {}) }} type="text"
                 value={operatorName} onChange={e => setOperatorName(e.target.value)}
                 placeholder="e.g. Saurav Joshi" disabled={locked} required />
             </Field>
@@ -190,48 +191,24 @@ export default function BoilerLogForm({ token, onBack }: Props) {
         <div style={s.section}>
           <div style={s.sectionTitle}>🪨 Daily Coal & Steam Summary <span style={s.note}>Fill once per day</span></div>
 
-          <div style={s.row3}>
-            <NumField label="Opening Coal Stock (MT)" value={coal.opening_coal_stock}
-              onChange={v=>C('opening_coal_stock',v)} locked={locked} />
+          <div style={s.row2}>
             <NumField label="Coal Arrival Indian (MT)" value={coal.coal_arrival_indian}
-              onChange={v=>C('coal_arrival_indian',v)} locked={locked} />
-            <NumField label="Coal Arrival Imported (MT)" value={coal.coal_arrival_imported}
-              onChange={v=>C('coal_arrival_imported',v)} locked={locked} />
-          </div>
-          <div style={s.row3}>
-            <NumField label="Coal Consumed SEP (MT)" value={coal.coal_consumed_sep}
-              onChange={v=>C('coal_consumed_sep',v)} locked={locked} />
-            <NumField label="Coal Consumed Refinery (MT)" value={coal.coal_consumed_refinery}
-              onChange={v=>C('coal_consumed_refinery',v)} locked={locked} />
+              onChange={v => C('coal_arrival_indian', v)} locked={locked && coal.coal_arrival_indian !== '' && coal.coal_arrival_indian !== '0'} />
             <NumField label="Coal Thermic Boiler (MT)" value={coal.coal_thermic}
-              onChange={v=>C('coal_thermic',v)} locked={locked} />
+              onChange={v => C('coal_thermic', v)} locked={locked && coal.coal_thermic !== '' && coal.coal_thermic !== '0'} />
           </div>
-          <div style={s.row3}>
-            <NumField label="Coal Rate per MT (₹)" value={coal.coal_rate_per_mt}
-              onChange={v=>C('coal_rate_per_mt',v)} locked={locked} />
+          <div style={s.row2}>
             <NumField label="Coal Bunker (%)" value={coal.coal_bunker_pct}
-              onChange={v=>C('coal_bunker_pct',v)} locked={locked} />
+              onChange={v => C('coal_bunker_pct', v)} locked={locked && coal.coal_bunker_pct !== ''} />
             <Field label="Steam Pressure OK">
-              <select style={{...s.select,...(locked?s.locked:{})}}
-                value={coal.steam_pressure_ok} onChange={e=>C('steam_pressure_ok',e.target.value)}
-                disabled={locked}>
+              <select style={{ ...s.select, ...(locked && coal.steam_pressure_ok !== '' ? s.locked : {}) }}
+                value={coal.steam_pressure_ok} onChange={e => C('steam_pressure_ok', e.target.value)}
+                disabled={locked && coal.steam_pressure_ok !== ''}>
                 <option value="true">Yes — Normal</option>
                 <option value="false">No — Issue</option>
               </select>
             </Field>
           </div>
-
-          {/* Live calculations */}
-          {totalCoal > 0 && (
-            <div style={s.calcBox}>
-              <CalcItem label="Total Coal Consumed" value={`${totalCoal.toFixed(3)} MT`} />
-              <CalcItem label="Closing Stock" value={`${closingStock.toFixed(3)} MT`}
-                warn={closingStock < 0} />
-              <CalcItem label="Total Steam" value={`${totalSteam.toFixed(3)} KG`} />
-              <CalcItem label="C/S Ratio" value={csRatio.toFixed(3)}
-                highlight={true} />
-            </div>
-          )}
         </div>
 
         {/* Steam Flow */}
@@ -239,15 +216,15 @@ export default function BoilerLogForm({ token, onBack }: Props) {
           <div style={s.sectionTitle}>♨️ Steam Flow Meter Readings</div>
           <div style={s.row2}>
             <NumField label="Opening Steam Flow SEP (KG)" value={steam.steam_sep_opening}
-              onChange={v=>S('steam_sep_opening',v)} locked={locked} />
+              onChange={v => S('steam_sep_opening', v)} locked={locked} />
             <NumField label="Closing Steam Flow SEP (KG)" value={steam.steam_sep_closing}
-              onChange={v=>S('steam_sep_closing',v)} locked={locked} />
+              onChange={v => S('steam_sep_closing', v)} locked={locked} />
           </div>
           <div style={s.row2}>
             <NumField label="Opening Steam Flow REFL (KG)" value={steam.steam_refl_opening}
-              onChange={v=>S('steam_refl_opening',v)} locked={locked} />
+              onChange={v => S('steam_refl_opening', v)} locked={locked} />
             <NumField label="Closing Steam Flow REFL (KG)" value={steam.steam_refl_closing}
-              onChange={v=>S('steam_refl_closing',v)} locked={locked} />
+              onChange={v => S('steam_refl_closing', v)} locked={locked} />
           </div>
           {(steamSepConsumed !== 0 || steamReflConsumed !== 0) && (
             <div style={s.calcBox}>
@@ -268,12 +245,13 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput,...(locked&&feedWater[i]!==''?s.lockedSlot:{}),...(locked&&feedWater[i]===''?s.emptySlot:{})}}
+                <input style={{...s.slotInput, ...(locked && feedWater[i]!=='' ? s.lockedSlot : {}), ...((!locked || feedWater[i]==='') ? {} : {})}}
                   type="number" step="any"
                   value={feedWater[i]}
-                  onChange={e => { if (locked) return; const n=[...feedWater]; n[i]=e.target.value; setFeedWater(n); }}
-                  placeholder="—"
-                  readOnly={locked}
+                  onChange={e => {
+                    const n = [...feedWater]; n[i] = e.target.value; setFeedWater(n);
+                  }}
+                  readOnly={locked && feedWater[i] !== ''}
                 />
               </div>
             ))}
@@ -291,12 +269,14 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput,...(locked&&fd1[i]!==''?s.lockedSlot:{}),...(locked&&fd1[i]===''?s.emptySlot:{})}}
+                <input style={{...s.slotInput, ...(locked && fd1[i]!=='' ? s.lockedSlot : {}), ...((!locked || fd1[i]==='') ? {} : {})}}
                   type="number" step="any"
                   value={fd1[i]}
-                  onChange={e => { if (locked) return; const n=[...fd1]; n[i]=e.target.value; setFd1(n); }}
-                  placeholder="—"
-                  readOnly={locked}
+                  onChange={e => {
+                    const n = [...fd1]; n[i] = e.target.value; setFd1(n);
+                  }}
+                  readOnly={locked && fd1[i] !== ''}
+
                 />
               </div>
             ))}
@@ -314,12 +294,13 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput,...(locked&&fd2[i]!==''?s.lockedSlot:{}),...(locked&&fd2[i]===''?s.emptySlot:{})}}
+                <input style={{...s.slotInput, ...(locked && fd2[i]!=='' ? s.lockedSlot : {}), ...((!locked || fd2[i]==='') ? {} : {})}}
                   type="number" step="any"
                   value={fd2[i]}
-                  onChange={e => { if (locked) return; const n=[...fd2]; n[i]=e.target.value; setFd2(n); }}
-                  placeholder="—"
-                  readOnly={locked}
+                  onChange={e => {
+                    const n = [...fd2]; n[i] = e.target.value; setFd2(n);
+                  }}
+                  readOnly={locked && fd2[i] !== ''}
                 />
               </div>
             ))}
@@ -330,7 +311,7 @@ export default function BoilerLogForm({ token, onBack }: Props) {
         {/* Remarks */}
         <div style={s.section}>
           <div style={s.sectionTitle}>📝 Remarks</div>
-          <textarea style={{...s.textarea,...(locked?s.locked:{})}}
+          <textarea style={{ ...s.textarea, ...(locked ? s.locked : {}) }}
             value={remarks} onChange={e => setRemarks(e.target.value)}
             placeholder="Any remarks for the day" rows={3}
             readOnly={locked} />
@@ -339,15 +320,17 @@ export default function BoilerLogForm({ token, onBack }: Props) {
         {error && <div style={s.errorBox}>❌ {error}</div>}
         {success && <div style={s.successBox}>{success}</div>}
 
-        {!locked && (
-          <button type="submit"
-            style={loading ? s.btnDisabled : s.btn}
-            disabled={loading}>
-            {loading ? 'Saving...' : existingId ? '💾 Update Entry' : '📤 Submit Entry'}
-          </button>
-        )}
-      </form>
-    </div>
+        {
+          !locked && (
+            <button type="submit"
+              style={loading ? s.btnDisabled : s.btn}
+              disabled={loading}>
+              {loading ? 'Saving...' : existingId ? '💾 Update Entry' : '📤 Submit Entry'}
+            </button>
+          )
+        }
+      </form >
+    </div >
   );
 }
 
@@ -361,7 +344,7 @@ function NumField({ label, value, onChange, locked }: {
 }) {
   return (
     <Field label={label}>
-      <input style={{...s.input,...(locked?s.locked:{})}}
+      <input style={{ ...s.input, ...(locked ? s.locked : {}) }}
         type="number" step="any" value={value}
         onChange={e => onChange(e.target.value)}
         placeholder="—" readOnly={locked} />
@@ -375,71 +358,111 @@ function CalcItem({ label, value, warn, highlight }: {
   return (
     <div style={s.calcItem}>
       <div style={s.calcLabel}>{label}</div>
-      <div style={{...s.calcValue, color: warn?'#ef4444':highlight?'#0f3460':'#111',
-        fontWeight: highlight?800:600}}>{value}</div>
+      <div style={{
+        ...s.calcValue, color: warn ? '#ef4444' : highlight ? '#0f3460' : '#111',
+        fontWeight: highlight ? 800 : 600
+      }}>{value}</div>
     </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight:'100vh', background:'#f0f2f5',
-    fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' },
-  header: { background:'#0f3460', color:'#fff', padding:'14px 20px',
-    display:'flex', alignItems:'center', gap:16, position:'sticky', top:0, zIndex:10 },
-  headerTitle: { fontSize:16, fontWeight:700 },
-  headerSub: { fontSize:11, opacity:0.75, marginTop:2 },
-  backBtn: { background:'rgba(255,255,255,0.15)', color:'#fff',
-    border:'1px solid rgba(255,255,255,0.3)', borderRadius:6,
-    padding:'6px 12px', cursor:'pointer', fontSize:13 },
-  modifyBtn: { marginLeft:'auto', background:'#f59e0b', color:'#fff',
-    border:'none', borderRadius:6, padding:'8px 16px',
-    cursor:'pointer', fontSize:13, fontWeight:700 },
-  lockedBanner: { background:'#fef9c3', borderBottom:'1px solid #fde047',
-    padding:'10px 20px', fontSize:13, color:'#854d0e', textAlign:'center' as const },
-  form: { maxWidth:760, margin:'0 auto', padding:'20px 16px 40px' },
-  section: { background:'#fff', borderRadius:12, padding:'16px 18px',
-    marginBottom:14, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' },
-  sectionTitle: { fontSize:13, fontWeight:700, color:'#0f3460', marginBottom:14,
-    paddingBottom:8, borderBottom:'1px solid #f0f0f0',
-    display:'flex', alignItems:'center', gap:8 },
-  note: { fontSize:11, fontWeight:400, color:'#999' },
-  row3: { display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 },
-  row2: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 },
-  field: { display:'flex', flexDirection:'column', gap:4 },
-  label: { fontSize:11, fontWeight:600, color:'#555',
-    textTransform:'uppercase' as const, letterSpacing:'0.04em' },
-  input: { padding:'10px 12px', border:'1.5px solid #e0e0e0', borderRadius:8,
-    fontSize:15, outline:'none', width:'100%', boxSizing:'border-box' as const },
-  select: { padding:'10px 12px', border:'1.5px solid #e0e0e0',
-    borderRadius:8, fontSize:14, outline:'none', background:'#fff', width:'100%' },
-  locked: { background:'#f8f9fa', color:'#666', cursor:'not-allowed' },
-  fetchNote: { fontSize:12, color:'#888', fontStyle:'italic', marginTop:4 },
-  calcBox: { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10,
-    background:'#f0f6ff', borderRadius:8, padding:'12px 14px', marginTop:8 },
-  calcItem: { textAlign:'center' as const },
-  calcLabel: { fontSize:10, color:'#666', marginBottom:4, textTransform:'uppercase' as const },
-  calcValue: { fontSize:15 },
-  avgBadge: { marginLeft:'auto', background:'#dbeafe', color:'#1d4ed8',
-    padding:'2px 10px', borderRadius:99, fontSize:11, fontWeight:700 },
-  avgRow: { marginTop:10, fontSize:13, color:'#555', textAlign:'right' as const,
-    paddingTop:6, borderTop:'1px solid #f0f0f0' },
-  grid12: { display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8 },
-  slot: { display:'flex', flexDirection:'column', alignItems:'center', gap:3 },
-  slotLabel: { fontSize:10, fontWeight:600, color:'#888' },
-  slotInput: { width:'100%', padding:'8px 4px', border:'1.5px solid #e0e0e0',
-    borderRadius:6, fontSize:13, textAlign:'center' as const, outline:'none' },
-  lockedSlot: { background:'#f0f6ff', borderColor:'#bfdbfe', color:'#1d4ed8' },
-  emptySlot: { background:'#f8f9fa', color:'#aaa' },
-  textarea: { width:'100%', padding:'10px 12px', border:'1.5px solid #e0e0e0',
-    borderRadius:8, fontSize:14, resize:'vertical' as const,
-    fontFamily:'inherit', boxSizing:'border-box' as const },
-  btn: { width:'100%', padding:'15px', background:'#0f3460', color:'#fff',
-    border:'none', borderRadius:10, fontSize:16, fontWeight:700,
-    cursor:'pointer', marginTop:8 },
-  btnDisabled: { width:'100%', padding:'15px', background:'#aaa', color:'#fff',
-    border:'none', borderRadius:10, fontSize:16, cursor:'not-allowed', marginTop:8 },
-  errorBox: { background:'#fff0f0', border:'1px solid #ffcccc', color:'#cc0000',
-    padding:'12px 16px', borderRadius:8, fontSize:13, marginBottom:10 },
-  successBox: { background:'#f0fff4', border:'1px solid #86efac', color:'#166534',
-    padding:'12px 16px', borderRadius:8, fontSize:13, marginBottom:10 },
+  page: {
+    minHeight: '100vh', background: '#f0f2f5',
+    fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+  },
+  header: {
+    background: '#0f3460', color: '#fff', padding: '14px 20px',
+    display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 10
+  },
+  headerTitle: { fontSize: 16, fontWeight: 700 },
+  headerSub: { fontSize: 11, opacity: 0.75, marginTop: 2 },
+  backBtn: {
+    background: 'rgba(255,255,255,0.15)', color: '#fff',
+    border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6,
+    padding: '6px 12px', cursor: 'pointer', fontSize: 13
+  },
+  modifyBtn: {
+    marginLeft: 'auto', background: '#f59e0b', color: '#fff',
+    border: 'none', borderRadius: 6, padding: '8px 16px',
+    cursor: 'pointer', fontSize: 13, fontWeight: 700
+  },
+  lockedBanner: {
+    background: '#fef9c3', borderBottom: '1px solid #fde047',
+    padding: '10px 20px', fontSize: 13, color: '#854d0e', textAlign: 'center' as const
+  },
+  form: { maxWidth: 760, margin: '0 auto', padding: '20px 16px 40px' },
+  section: {
+    background: '#fff', borderRadius: 12, padding: '16px 18px',
+    marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+  },
+  sectionTitle: {
+    fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 14,
+    paddingBottom: 8, borderBottom: '1px solid #f0f0f0',
+    display: 'flex', alignItems: 'center', gap: 8
+  },
+  note: { fontSize: 11, fontWeight: 400, color: '#999' },
+  row3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 },
+  row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 },
+  field: { display: 'flex', flexDirection: 'column', gap: 4 },
+  label: {
+    fontSize: 11, fontWeight: 600, color: '#555',
+    textTransform: 'uppercase' as const, letterSpacing: '0.04em'
+  },
+  input: {
+    padding: '10px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8,
+    fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' as const
+  },
+  select: {
+    padding: '10px 12px', border: '1.5px solid #e0e0e0',
+    borderRadius: 8, fontSize: 14, outline: 'none', background: '#fff', width: '100%'
+  },
+  locked: { background: '#f8f9fa', color: '#666', cursor: 'not-allowed' },
+  fetchNote: { fontSize: 12, color: '#888', fontStyle: 'italic', marginTop: 4 },
+  calcBox: {
+    display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10,
+    background: '#f0f6ff', borderRadius: 8, padding: '12px 14px', marginTop: 8
+  },
+  calcItem: { textAlign: 'center' as const },
+  calcLabel: { fontSize: 10, color: '#666', marginBottom: 4, textTransform: 'uppercase' as const },
+  calcValue: { fontSize: 15 },
+  avgBadge: {
+    marginLeft: 'auto', background: '#dbeafe', color: '#1d4ed8',
+    padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700
+  },
+  avgRow: {
+    marginTop: 10, fontSize: 13, color: '#555', textAlign: 'right' as const,
+    paddingTop: 6, borderTop: '1px solid #f0f0f0'
+  },
+  grid12: { display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 },
+  slot: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 },
+  slotLabel: { fontSize: 10, fontWeight: 600, color: '#888' },
+  slotInput: {
+    width: '100%', padding: '8px 4px', border: '1.5px solid #e0e0e0',
+    borderRadius: 6, fontSize: 13, textAlign: 'center' as const, outline: 'none'
+  },
+  lockedSlot: { background: '#f0f6ff', borderColor: '#bfdbfe', color: '#1d4ed8' },
+  emptySlot: { background: '#f8f9fa', color: '#aaa' },
+  textarea: {
+    width: '100%', padding: '10px 12px', border: '1.5px solid #e0e0e0',
+    borderRadius: 8, fontSize: 14, resize: 'vertical' as const,
+    fontFamily: 'inherit', boxSizing: 'border-box' as const
+  },
+  btn: {
+    width: '100%', padding: '15px', background: '#0f3460', color: '#fff',
+    border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700,
+    cursor: 'pointer', marginTop: 8
+  },
+  btnDisabled: {
+    width: '100%', padding: '15px', background: '#aaa', color: '#fff',
+    border: 'none', borderRadius: 10, fontSize: 16, cursor: 'not-allowed', marginTop: 8
+  },
+  errorBox: {
+    background: '#fff0f0', border: '1px solid #ffcccc', color: '#cc0000',
+    padding: '12px 16px', borderRadius: 8, fontSize: 13, marginBottom: 10
+  },
+  successBox: {
+    background: '#f0fff4', border: '1px solid #86efac', color: '#166534',
+    padding: '12px 16px', borderRadius: 8, fontSize: 13, marginBottom: 10
+  },
 };

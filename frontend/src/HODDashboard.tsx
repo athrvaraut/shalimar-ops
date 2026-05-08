@@ -61,7 +61,7 @@ export default function HODDashboard({ token, onBack }: {
       const today = new Date().toISOString().split('T')[0];
       try {
         // Get yesterday's closing
-        const r1 = await fetch(`${API}/daily-report/closing/${today}`, { headers: authHeader });
+        const r1 = await fetch(`${API}/daily-entry/closing/${today}`, { headers: authHeader });
         if (r1.ok) {
           const d1 = await r1.json();
           if (d1.closing_stock) {
@@ -70,7 +70,7 @@ export default function HODDashboard({ token, onBack }: {
           }
         }
         // Check if today's opening already set
-        const r2 = await fetch(`${API}/daily-report/${today}`, { headers: authHeader });
+        const r2 = await fetch(`${API}/daily-entry/${today}`, { headers: authHeader });
         if (r2.ok) {
           const d2 = await r2.json();
           if (d2.opening_coal_stock) {
@@ -150,7 +150,7 @@ export default function HODDashboard({ token, onBack }: {
     const val = parseFloat(coalStockInput);
     if (!val || isNaN(val)) { setCoalStockMsg('Enter a valid number'); return; }
     try {
-      const res = await fetch(`${API}/daily-report/${today}/opening`, {
+      const res = await fetch(`${API}/daily-entry/${today}/opening`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({ opening_stock: val }),
