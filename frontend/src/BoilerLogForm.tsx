@@ -41,6 +41,10 @@ export default function BoilerLogForm({ token, onBack }: Props) {
   const [fd1, setFd1] = useState<(string)[]>(Array(12).fill(''));
   const [fd2, setFd2] = useState<(string)[]>(Array(12).fill(''));
   const [remarks, setRemarks] = useState('');
+  // Add these 3 new state arrays after your existing state declarations:
+  const [serverFW, setServerFW] = useState<boolean[]>(Array(12).fill(false));
+  const [serverFD1, setServerFD1] = useState<boolean[]>(Array(12).fill(false));
+  const [serverFD2, setServerFD2] = useState<boolean[]>(Array(12).fill(false));
 
   // Live calculations
   const steamSepConsumed = (parseFloat(steam.steam_sep_closing) || 0) - (parseFloat(steam.steam_sep_opening) || 0);
@@ -86,6 +90,9 @@ export default function BoilerLogForm({ token, onBack }: Props) {
       setFeedWater(fw.map((x: any) => x ?? ''));
       setFd1(f1.map((x: any) => x ?? ''));
       setFd2(f2.map((x: any) => x ?? ''));
+      setServerFW(fw.map((x: any) => x !== null && x !== undefined && x !== ''));
+      setServerFD1(f1.map((x: any) => x !== null && x !== undefined && x !== ''));
+      setServerFD2(f2.map((x: any) => x !== null && x !== undefined && x !== ''));
       setRemarks(data.remarks || '');
       setLocked(true);
     }).catch(() => {
@@ -101,6 +108,9 @@ export default function BoilerLogForm({ token, onBack }: Props) {
       setFeedWater(Array(12).fill(''));
       setFd1(Array(12).fill(''));
       setFd2(Array(12).fill(''));
+      setServerFW(Array(12).fill(false));
+      setServerFD1(Array(12).fill(false));
+      setServerFD2(Array(12).fill(false));
       setRemarks('');
     }).finally(() => setFetchingDate(false));
   }, [date]);
@@ -245,13 +255,15 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput, ...(locked && feedWater[i]!=='' ? s.lockedSlot : {}), ...((!locked || feedWater[i]==='') ? {} : {})}}
+                <input
+                  style={{ ...s.slotInput, ...(locked && serverFW[i] ? s.lockedSlot : {}) }}
                   type="number" step="any"
                   value={feedWater[i]}
                   onChange={e => {
                     const n = [...feedWater]; n[i] = e.target.value; setFeedWater(n);
                   }}
-                  readOnly={locked && feedWater[i] !== ''}
+                  readOnly={locked && serverFW[i]}
+                  placeholder="—"
                 />
               </div>
             ))}
@@ -269,14 +281,15 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput, ...(locked && fd1[i]!=='' ? s.lockedSlot : {}), ...((!locked || fd1[i]==='') ? {} : {})}}
+                <input
+                  style={{ ...s.slotInput, ...(locked && serverFD1[i] ? s.lockedSlot : {}) }}
                   type="number" step="any"
                   value={fd1[i]}
                   onChange={e => {
                     const n = [...fd1]; n[i] = e.target.value; setFd1(n);
                   }}
-                  readOnly={locked && fd1[i] !== ''}
-
+                  readOnly={locked && serverFD1[i]}
+                  placeholder="—"
                 />
               </div>
             ))}
@@ -294,13 +307,15 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             {TIME_SLOTS.map((t, i) => (
               <div key={t} style={s.slot}>
                 <div style={s.slotLabel}>{t}</div>
-                <input style={{...s.slotInput, ...(locked && fd2[i]!=='' ? s.lockedSlot : {}), ...((!locked || fd2[i]==='') ? {} : {})}}
+                <input
+                  style={{ ...s.slotInput, ...(locked && serverFD2[i] ? s.lockedSlot : {}) }}
                   type="number" step="any"
                   value={fd2[i]}
                   onChange={e => {
                     const n = [...fd2]; n[i] = e.target.value; setFd2(n);
                   }}
-                  readOnly={locked && fd2[i] !== ''}
+                  readOnly={locked && serverFD2[i]}
+                  placeholder="—"
                 />
               </div>
             ))}

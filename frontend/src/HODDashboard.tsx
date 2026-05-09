@@ -61,7 +61,7 @@ export default function HODDashboard({ token, onBack }: {
       const today = new Date().toISOString().split('T')[0];
       try {
         // Get yesterday's closing
-        const r1 = await fetch(`${API}/daily-entry/closing/${today}`, { headers: authHeader });
+        const r1 = await fetch(`${API}/daily-report/closing/${today}`, { headers: authHeader });
         if (r1.ok) {
           const d1 = await r1.json();
           if (d1.closing_stock) {
@@ -150,7 +150,7 @@ export default function HODDashboard({ token, onBack }: {
     const val = parseFloat(coalStockInput);
     if (!val || isNaN(val)) { setCoalStockMsg('Enter a valid number'); return; }
     try {
-      const res = await fetch(`${API}/daily-entry/${today}/opening`, {
+      const res = await fetch(`${API}/daily-report/${today}/opening`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({ opening_stock: val }),
@@ -203,69 +203,6 @@ export default function HODDashboard({ token, onBack }: {
           ⚡ Power
         </button>
       </div>
-
-      {/* Coal Opening Stock Approval Card */}
-      <div style={{
-        background: coalStockApproved ? '#f0fff4' : '#fffbeb',
-        border: `1.5px solid ${coalStockApproved ? '#86efac' : '#fcd34d'}`,
-        borderRadius: 12,
-        padding: '14px 18px',
-        marginBottom: 16,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 4 }}>
-              🪨 Today's Opening Coal Stock (MT)
-            </div>
-            {suggestedOpening && (
-              <div style={{ fontSize: 11, color: '#666' }}>
-                Suggested from yesterday's closing: <strong>{suggestedOpening} MT</strong>
-              </div>
-            )}
-            {!suggestedOpening && (
-              <div style={{ fontSize: 11, color: '#888' }}>Yesterday's closing not found — enter manually</div>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="number"
-              step="any"
-              value={coalStockInput}
-              onChange={e => { setCoalStockInput(e.target.value); setCoalStockApproved(false); }}
-              placeholder="e.g. 919.175"
-              style={{
-                padding: '8px 12px',
-                border: '1.5px solid #e0e0e0',
-                borderRadius: 8,
-                fontSize: 14,
-                width: 130,
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={approveOpeningStock}
-              style={{
-                background: coalStockApproved ? '#10b981' : '#0f3460',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                padding: '9px 16px',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              {coalStockApproved ? '✓ Approved' : '✓ Approve & Set'}
-            </button>
-          </div>
-        </div>
-        {coalStockMsg && (
-          <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{coalStockMsg}</div>
-        )}
-      </div>
-
-      {message && <div style={s.msgBox}>{message}</div>}
 
       {/* ── BOILER LOG ── */}
       {tab === 'boiler' && (
@@ -342,6 +279,70 @@ export default function HODDashboard({ token, onBack }: {
               )}
             </div>
           ))}
+
+          {/* Coal Opening Stock Approval Card */}
+          <div style={{
+            background: coalStockApproved ? '#f0fff4' : '#fffbeb',
+            border: `1.5px solid ${coalStockApproved ? '#86efac' : '#fcd34d'}`,
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: 16,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 4 }}>
+                  🪨 Today's Opening Coal Stock (MT)
+                </div>
+                {suggestedOpening && (
+                  <div style={{ fontSize: 11, color: '#666' }}>
+                    Suggested from yesterday's closing: <strong>{suggestedOpening} MT</strong>
+                  </div>
+                )}
+                {!suggestedOpening && (
+                  <div style={{ fontSize: 11, color: '#888' }}>Yesterday's closing not found — enter manually</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="number"
+                  step="any"
+                  value={coalStockInput}
+                  onChange={e => { setCoalStockInput(e.target.value); setCoalStockApproved(false); }}
+                  placeholder="e.g. 919.175"
+                  style={{
+                    padding: '8px 12px',
+                    border: '1.5px solid #e0e0e0',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    width: 130,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={approveOpeningStock}
+                  style={{
+                    background: coalStockApproved ? '#10b981' : '#0f3460',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '9px 16px',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                >
+                  {coalStockApproved ? '✓ Approved' : '✓ Approve & Set'}
+                </button>
+              </div>
+            </div>
+            {coalStockMsg && (
+              <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{coalStockMsg}</div>
+            )}
+          </div>
+
+          {message && <div style={s.msgBox}>{message}</div>}
+
         </div>
       )}
 
