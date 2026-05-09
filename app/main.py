@@ -439,7 +439,7 @@ def submit_power(
                 diesel_opening_stock, diesel_received, diesel_consumed,
                 dg_generated_units, dg_reason
             ) VALUES (
-                :d::date, :uid::uuid,
+                CAST(:d AS DATE), CAST(:uid AS UUID),
                 :sep, :prep, :solar, :silo, :doc,
                 :dsilo, :acm, :boiler, :chp, :dm,
                 :ug, :ref, :etp, :pack,
@@ -473,108 +473,91 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)):
     try:
         from sqlalchemy import text
-        
-        # Pull coal/steam from BOTH tables — boiler_log_entries first, fallback to daily_coal_steam
-        coal_result = db.execute(text(
-            "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
+        import json
+
+        # Try daily_entries first (new system), fallback to daily_coal_steam
+        entry_result = db.execute(text(
+            "SELECT * FROM daily_entries WHERE entry_date::text = :date LIMIT 1"
         ), {"date": date}).mappings().fetchone()
-        report = dict(coal_result) if coal_result else None
         
-        # If not in boiler_log_entries, check daily_coal_steam
-        if not coal_result:
+        report = None
+        if entry_result:
+            row = dict(entry_result)
+            # Parse JSON arrays
+            for field in ['feed_water_temps', 'fd_fan1_dampers', 'fd_fan2_dampers']:
+                if row.get(field):
+                    try: row[field] = json.loads(row[field])
+                    except: row[field] = []
+            report = row
+            # Map daily_entries fields to what the Excel generator expects
+            report['opening_coal_stock'] = row.get('opening_coal_stock')
+            report['coal_arrival_indian'] = row.get('coal_arrival_indian')
+            report['coal_thermic'] = row.get('coal_thermic')
+            report['coal_bunker_pct'] = row.get('coal_bunker_pct')
+            report['steam_pressure_ok'] = row.get('steam_pressure_ok', True)
+            
+            # Steam values
+            sep_open = row.get('steam_sep_opening') or 0
+            sep_close = row.get('steam_sep_closing') or 0
+            refl_open = row.get('steam_refl_opening') or 0
+            refl_close = row.get('steam_refl_closing') or 0
+            
+            # Feed water average
+            fw = row.get('feed_water_temps', [])
+            fw_vals = [x for x in fw if x is not None and x != '']
+            avg_fw = round(sum(fw_vals)/len(fw_vals), 1) if fw_vals else None
+            
+            # FD fan averages  
+            fd1 = row.get('fd_fan1_dampers', [])
+            fd2 = row.get('fd_fan2_dampers', [])
+            fd1_vals = [x for x in fd1 if x is not None and x != '']
+            fd2_vals = [x for x in fd2 if x is not None and x != '']
+            avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
+            avg_fd2 = round(sum(fd2_vals)/len(fd2_vals), 2) if fd2_vals else None
+            avg_feeding = avg_fd1  # use FD Fan 1 average as feeding HZ
+        else:
+            # Fallback to old table
             coal_result = db.execute(text(
                 "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
             ), {"date": date}).mappings().fetchone()
-            report = dict(coal_result) if coal_result else None
+            report = dict(coal_result) if coal_result else {}
+            sep_open = report.get('steam_sep_opening') or 0
+            sep_close = report.get('steam_sep_closing') or 0
+            refl_open = report.get('steam_refl_opening') or 0
+            refl_close = report.get('steam_refl_closing') or 0
+            avg_fw = report.get('avg_feed_water') or report.get('feed_water_temp')
+            avg_feeding = None
 
-            # After: report = dict(coal_result) if coal_result else None
-            # Add this helper:
         def safe_float(val, default=None):
-            if val is None:
-                return default
-            try:
-                return float(val)
-            except:
-                return default
-        
-        logs = db.execute(text(
-            "SELECT * FROM boiler_log_entries WHERE log_date::text = :date "
-            "ORDER BY log_time ASC"
-        ), {"date": date}).mappings().all()
-        logs = [dict(r) for r in logs]
+            if val is None: return default
+            try: return float(val)
+            except: return default
 
-        # ── AUTO-CALCULATE from boiler entries ──────────────────
-        sep_flows = [safe_float(l.get('steam_flow_sep')) for l in logs if safe_float(l.get('steam_flow_sep')) is not None]
-        refl_flows = [safe_float(l.get('steam_flow_refl')) for l in logs if safe_float(l.get('steam_flow_refl')) is not None]
-        feed_temps = [safe_float(l.get('feed_water_temp')) for l in logs if safe_float(l.get('feed_water_temp')) is not None]
-        bed1_hz = [safe_float(l.get('coal_feed_bed1_hz')) for l in logs if safe_float(l.get('coal_feed_bed1_hz')) is not None]
-        bed2_hz = [safe_float(l.get('coal_feed_bed2_hz')) for l in logs if safe_float(l.get('coal_feed_bed2_hz')) is not None]
-
-        sep_opening = min(sep_flows) if sep_flows else None
-        sep_closing = max(sep_flows) if sep_flows else None
-        refl_opening = min(refl_flows) if refl_flows else None
-        refl_closing = max(refl_flows) if refl_flows else None
-
-        sep_consumed = (sep_closing - sep_opening) if (sep_closing and sep_opening) else None
-        refl_consumed = (refl_closing - refl_opening) if (refl_closing and refl_opening) else None
-        total_steam = (sep_consumed + refl_consumed) if (sep_consumed and refl_consumed) else None
-
-        avg_feed_water = round(sum(feed_temps) / len(feed_temps), 1) if feed_temps else None
-
-        all_hz = bed1_hz + bed2_hz
-        avg_feeding = round(sum(all_hz) / len(all_hz), 2) if all_hz else None
-
-        # Coal for Steam = avg_feeding * 60 * 24 (in KG)
-        coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
-
-        # 👇 4. CALCULATE ACTUAL CS RATIO FIRST 👇
-        if total_steam is not None and coal_for_steam is not None and coal_for_steam > 0:
-            actual_cs_ratio = round(total_steam / coal_for_steam, 2)
-        else:
-            actual_cs_ratio = 0
-
-        # Get manual coal data from report (or from boiler entries)
+        # Now build Excel with actual values (not formulas that reference empty cells)
         opening_stock = safe_float(report.get('opening_coal_stock')) if report else None
         arrival_ind = safe_float(report.get('coal_arrival_indian')) if report else None
         arrival_imp = safe_float(report.get('coal_arrival_imported', 0)) if report else 0
         coal_thermic = safe_float(report.get('coal_thermic', 0)) if report else 0
         coal_bunker = safe_float(report.get('coal_bunker_pct')) if report else None
         steam_pressure_ok = report.get('steam_pressure_ok', True) if report else True
-
-        # Calculate coal SEP and REFL
-        # 👇 E5: Coal SEP (MT) - Uses the actual_cs_ratio calculated above! 👇
-        if sep_consumed is not None and actual_cs_ratio > 0:
-            auto_coal_sep = round(sep_consumed / (actual_cs_ratio * 1000), 3)
-        else:
-            auto_coal_sep = safe_float(report.get('coal_consumed_sep')) if report else 0
-
-        # F5: Coal REFL (MT)
-        coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam else None
-        if coal_for_steam_mt is not None and auto_coal_sep is not None:
-            auto_coal_refl = round(coal_for_steam_mt - auto_coal_sep, 3)
-        else:
-            auto_coal_refl = safe_float(report.get('coal_consumed_refinery')) if report else None
-
-        # H5: Total Coal
-        if auto_coal_sep is not None and auto_coal_refl is not None:
-            auto_total_coal = round(auto_coal_sep + auto_coal_refl + float(coal_thermic or 0), 3)
-        else:
-            auto_total_coal = safe_float(report.get('total_coal_consumed')) if report else None
-
-        # I5: Closing Stock
-        if opening_stock is not None and auto_total_coal is not None:
-            auto_closing = round(float(opening_stock) + float(arrival_ind or 0) + float(arrival_imp or 0) - auto_total_coal, 3)
-        else:
-            auto_closing = safe_float(report.get('closing_stock')) if report else None
+        
+        sep_consumed = (safe_float(sep_close) or 0) - (safe_float(sep_open) or 0)
+        refl_consumed = (safe_float(refl_close) or 0) - (safe_float(refl_open) or 0)
+        total_steam = sep_consumed + refl_consumed
+        
+        # Build the workbook (same structure as before but with real values)
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from io import BytesIO
+        from fastapi.responses import StreamingResponse
+        from datetime import datetime as dt
 
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Sheet1"
-        # Styles matching father's file exactly
+
         bold = Font(bold=True)
-        bold_blue = Font(bold=True, color="1F3864")
         center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        left = Alignment(horizontal="left", vertical="center", wrap_text=True)
         thin = Side(style="thin")
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
         yellow_fill = PatternFill("solid", fgColor="FFFF00")
@@ -589,208 +572,121 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             if b: c.border = b
             return c
 
-        # Parse date for display
-        from datetime import datetime
-
-        date_display = safe_date_str(date)
-
         try:
-            d = datetime.strptime(date, "%Y-%m-%d")
+            d = dt.strptime(date, "%Y-%m-%d")
             date_display = d.strftime("%d/%m/%Y")
             month_year = d.strftime("%b. - %Y").upper()
         except:
             date_display = date
             month_year = date
 
-        # ROW 1 - Title
+        # Row 1-3 titles
         ws.merge_cells("B1:J1")
         cell(1, 2, f"DAILY STATUS REPORT- {month_year}", Font(bold=True, size=12), align=center)
-
-        # ROW 2 - Date
         ws.merge_cells("B2:J2")
         cell(2, 2, f"DATE : {date_display}", Font(bold=True, size=11), align=center)
-
-        # ROW 3 - Section title
         ws.merge_cells("B3:J3")
         cell(3, 2, "COAL COSUMPTION AND STOCK SHEET", Font(bold=True), blue_fill, center, border)
 
-        # ROW 4 - Coal headers (matching father's exact column names)
-        headers_coal = [
-            "OPENING STOCK OF COAL IN MT",
-            "ARRIVAL COAL IN MT (IND)",
-            "ARRIVAL COAL IN MT (IMP)",
-            "COAL CONSUMPTION IN MT (SEP)",
-            "COAL CONSUMPTION IN MT (REFINERY)",
-            "COAL ISSUE TO THERMIC BLR IN MT",
-            "TOTAL COAL CONSUMPTION IN MT",
-            "CLOSING STOCK IN MT",
-            "REMARKS"
-        ]
+        # Row 4 headers
+        headers_coal = ["OPENING STOCK OF COAL IN MT","ARRIVAL COAL IN MT (IND)","ARRIVAL COAL IN MT (IMP)",
+            "COAL CONSUMPTION IN MT (SEP)","COAL CONSUMPTION IN MT (REFINERY)","COAL ISSUE TO THERMIC BLR IN MT",
+            "TOTAL COAL CONSUMPTION IN MT","CLOSING STOCK IN MT","REMARKS"]
         for i, h in enumerate(headers_coal, 2):
             cell(4, i, h, bold, blue_fill, center, border)
 
-        # ── ROW 5 — Coal stock table (raw inputs + formula cells) ──
-        cell(5, 2, opening_stock, align=center, b=border)       # B5: opening stock (raw)
-        cell(5, 3, arrival_ind, align=center, b=border)         # C5: arrival indian (raw)
-        cell(5, 4, arrival_imp or 0, align=center, b=border)    # D5: arrival imported (raw)
+        # Coal data rows — use REAL calculated values
+        coal_consumed_sep = row.get('coal_consumed_sep') if entry_result and row.get('coal_consumed_sep') else None
+        coal_consumed_refl = row.get('coal_consumed_refinery') if entry_result and row.get('coal_consumed_refinery') else None
+        total_coal = (coal_consumed_sep or 0) + (coal_consumed_refl or 0) + (coal_thermic or 0)
+        closing_stock = (opening_stock or 0) + (arrival_ind or 0) + (arrival_imp or 0) - total_coal if opening_stock else None
+        cs_ratio = round(total_steam / (total_coal * 1000), 3) if total_coal and total_coal > 0 and total_steam > 0 else None
 
-        # E5: Coal SEP = SEP_consumed / (C/S_ratio * 1000)
-        c = ws.cell(row=5, column=5, value='=IF(I17>0,E13/(I17*1000),"")')
-        c.alignment = center; c.border = border
-
-        # F5: Coal REF = Coal_for_steam_mt - Coal_SEP
-        c = ws.cell(row=5, column=6, value='=IF(I8>0,I8/1000-E5,"")')
-        c.alignment = center; c.border = border
-
-        cell(5, 7, coal_thermic or 0, align=center, b=border)   # G5: thermic (raw, manual)
-
-        # H5: Total Coal = E5 + F5 + G5
-        c = ws.cell(row=5, column=8, value='=E5+F5+G5')
+        cell(5, 2, opening_stock, align=center, b=border)
+        cell(5, 3, arrival_ind, align=center, b=border)
+        cell(5, 4, arrival_imp or 0, align=center, b=border)
+        cell(5, 5, coal_consumed_sep, align=center, b=border)
+        cell(5, 6, coal_consumed_refl, align=center, b=border)
+        cell(5, 7, coal_thermic or 0, align=center, b=border)
+        c = ws.cell(5, 8, total_coal if total_coal > 0 else None)
         c.font = bold; c.alignment = center; c.border = border
+        cell(5, 9, closing_stock, align=center, b=border)
+        cell(5, 10, '', align=center, b=border)
 
-        # I5: Closing Stock = B5 + C5 + D5 - H5
-        c = ws.cell(row=5, column=9, value='=B5+C5+D5-H5')
-        c.alignment = center; c.border = border
-
-        cell(5, 10, '', align=center, b=border)  # J5: remarks blank
-
-        ws.append([])  # row 6 empty
-        
-        # ── ROW 7-9 — Coal bunker section & Steam Pressure ──
-        cell(7, 2, "PERTICULAR", bold, blue_fill, left, border)
+        # Row 7-9 Coal bunker
+        cell(7, 2, "PERTICULAR", bold, blue_fill, None, border)
         cell(7, 3, None, b=border)
         cell(7, 4, "COAL IN BUNKER (%)", bold, blue_fill, center, border)
         cell(7, 5, "REMARKS", bold, blue_fill, center, border)
-        cell(7, 6, None, b=border)
-        cell(7, 7, None, b=border)
-        cell(7, 8, None, b=border)
         cell(7, 9, "COAL FOR STEAM (KG)", bold, align=center, b=border)
-        cell(7, 10, None, b=border)
 
-        cell(8, 2, "COAL BUNKER STATUS", bold, align=left, b=border)
+        cell(8, 2, "COAL BUNKER STATUS", bold, b=border)
         cell(8, 3, None, b=border)
         cell(8, 4, coal_bunker, align=center, b=border)
-        cell(8, 5, None, b=border)
-        cell(8, 6, None, b=border)
-        cell(8, 7, None, b=border)
-        cell(8, 8, None, b=border)
+        coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
+        cell(8, 9, coal_for_steam, Font(bold=True), align=center, b=border)
 
-        # I8: Coal For Steam = avg_feeding (from I13) * 60 * 24
-        # Formula: =IF(I13>0,I13*60*24,"")
-        c = ws.cell(row=8, column=9, value='=IF(I13>0,I13*60*24,"")')
-        c.font = bold; c.alignment = center; c.border = border
-
-        cell(9, 2, "STEAM PRESSURE PROBLEM", bold, align=left, b=border)
+        cell(9, 2, "STEAM PRESSURE PROBLEM", bold, b=border)
         cell(9, 3, None, b=border)
-        
-        # Steam pressure conditional formatting
-        sp_val = "NO" if steam_pressure_ok else "YES ⚠️"
+        sp_val = "NO" if steam_pressure_ok else "YES"
         sp_fill = green_fill if steam_pressure_ok else PatternFill("solid", fgColor="FADBD8")
         cell(9, 4, sp_val, Font(bold=True), sp_fill, center, border)
-        cell(9, 5, None, b=border)
 
-        ws.append([])  # row 10 empty
-        
-        # ── ROW 11-13 — SEP Steam Meter ──
+        # Row 11-13 SEP Steam
         ws.merge_cells("B11:J11")
         cell(11, 2, "STEAM FLOW METER READING (SEP)", Font(bold=True), blue_fill, center, border)
-
-        steam_headers = [
-            "OPENING READING IN KG", "CLOSING READING IN KG", "",
-            "STEAM CONSUMPTION IN KG", "", "FEED WATER TEMP. (°C)", "",
-            "AVERAGE FEEDING (HZ)", ""
-        ]
-        
+        steam_headers = ["OPENING READING IN KG","CLOSING READING IN KG","","STEAM CONSUMPTION IN KG",
+            "","FEED WATER TEMP. (°C)","","AVERAGE FEEDING (HZ)",""]
         for i, h in enumerate(steam_headers, 2):
-            if h:
-                cell(12, i, h, bold, blue_fill, center, border)
-            else:
-                cell(12, i, "", None, blue_fill, None, border)
+            cell(12, i, h if h else "", bold if h else None, blue_fill, center, border)
 
-        # Row 13: Raw meter readings + formula for consumption
-        cell(13, 2, sep_opening, align=center, b=border)           # B13: SEP opening
-        cell(13, 3, sep_closing, align=center, b=border)           # C13: SEP closing
-        cell(13, 4, None, align=center, b=border)
-        
-        # E13: SEP Consumed = C13 - B13
-        # Added an IF statement to keep it clean if the cells are empty
-        c = ws.cell(row=13, column=5, value='=IF(C13>0, C13-B13, 0)')
+        cell(13, 2, safe_float(sep_open) or None, align=center, b=border)
+        cell(13, 3, safe_float(sep_close) or None, align=center, b=border)
+        cell(13, 4, None, b=border)
+        c = ws.cell(13, 5, sep_consumed if sep_consumed else None)
         c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
-        
-        cell(13, 6, None, align=center, b=border)
-        cell(13, 7, avg_feed_water, align=center, b=border)        # G13: Feed water
-        cell(13, 8, None, align=center, b=border)
-        cell(13, 9, avg_feeding, align=center, b=border)           # I13: Average feeding
+        cell(13, 6, None, b=border)
+        cell(13, 7, avg_fw, align=center, b=border)
+        cell(13, 8, None, b=border)
+        cell(13, 9, avg_feeding, align=center, b=border)
 
-        ws.append([])  # row 14 empty
-
-        # ── ROW 15-17 REFL Steam ──
+        # Row 15-17 REFL Steam
         ws.merge_cells("B15:J15")
         cell(15, 2, "STEAM FLOW METER READING (REFINERY)", Font(bold=True), blue_fill, center, border)
-
-        refl_headers = [
-            "OPENING READING IN KG", "CLOSING READING IN KG", "",
-            "STEAM COSUMPTION IN KG", "", "TOTAL STEAM (KG)", "",
-            "STEAM TO COAL RATIO", ""
-        ]
-        
+        refl_headers = ["OPENING READING IN KG","CLOSING READING IN KG","","STEAM COSUMPTION IN KG",
+            "","TOTAL STEAM (KG)","","STEAM TO COAL RATIO",""]
         for i, h in enumerate(refl_headers, 2):
-            if h:
-                cell(16, i, h, bold, blue_fill, center, border)
-            else:
-                cell(16, i, "", None, blue_fill, None, border)
+            cell(16, i, h if h else "", bold if h else None, blue_fill, center, border)
 
-        # ── ROW 17: raw readings + formula for consumption, total steam, C/S ratio ──
-        if report:
-            cell(17, 2, refl_opening, align=center, b=border)           # B17: REFL opening (raw)
-            cell(17, 3, refl_closing, align=center, b=border)           # C17: REFL closing (raw)
-            cell(17, 4, None, align=center, b=border)
-            
-            # E17: REFL Consumed = C17 - B17
-            c = ws.cell(row=17, column=5, value='=C17-B17')
-            c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
-            
-            cell(17, 6, None, align=center, b=border)
-            
-            # G17: Total Steam = E13 + E17
-            c = ws.cell(row=17, column=7, value='=E13+E17')
-            c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
-            
-            cell(17, 8, None, align=center, b=border)
-            
-            # I17: C/S Ratio = Total Steam / Coal For Steam  = G17 / I8
-            c = ws.cell(row=17, column=9, value='=IF(I8>0,G17/I8,"")')
-            cs_fill = green_fill  # color set at render time, formula handles value
-            c.font = bold; c.fill = cs_fill; c.alignment = center; c.border = border
-            c.number_format = '0.00'
+        cell(17, 2, safe_float(refl_open) or None, align=center, b=border)
+        cell(17, 3, safe_float(refl_close) or None, align=center, b=border)
+        cell(17, 4, None, b=border)
+        c = ws.cell(17, 5, refl_consumed if refl_consumed else None)
+        c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
+        cell(17, 6, None, b=border)
+        c = ws.cell(17, 7, total_steam if total_steam else None)
+        c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
+        cell(17, 8, None, b=border)
+        c = ws.cell(17, 9, cs_ratio)
+        c.font = bold; c.fill = green_fill; c.alignment = center; c.border = border
+        if cs_ratio: c.number_format = '0.00'
 
-        # Column widths matching father's layout
-        col_widths = {
-            'A': 4, 'B': 22, 'C': 16, 'D': 16,
-            'E': 18, 'F': 16, 'G': 14, 'H': 14, 'I': 16, 'J': 12
-        }
-        for col, width in col_widths.items():
+        # Column widths
+        for col, width in {'A':4,'B':22,'C':16,'D':16,'E':18,'F':16,'G':14,'H':14,'I':16,'J':12}.items():
             ws.column_dimensions[col].width = width
-
-        # Row heights
         for r in [4, 12, 16]:
             ws.row_dimensions[r].height = 40
 
-        # Footer (Explicitly placed on Row 21 so it never overwrites Row 17)
-        footer_row = 21
-        ws.cell(footer_row, 2).value = f"Generated: {date}  |  HOD: {current_user.name}  |  Shalimar Plant Ops System"
-        ws.cell(footer_row, 2).font = Font(italic=True, color="888888", size=9)
+        cell(21, 2, f"Generated: {date}  |  HOD: {current_user.name}  |  Shalimar Plant Ops System",
+             Font(italic=True, color="888888", size=9))
 
         buffer = BytesIO()
         wb.save(buffer)
         buffer.seek(0)
-        
-        return StreamingResponse(
-            buffer,
+        return StreamingResponse(buffer,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=Boiler_{date}.xlsx"}
-        )
-        
+            headers={"Content-Disposition": f"attachment; filename=Boiler_{date}.xlsx"})
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Excel generation failed: {str(e)}")
 
@@ -1357,6 +1253,25 @@ def history_power(year: int, month: int, db: Session = Depends(get_db),
     ), {"p": prefix}).mappings().all()
     return [dict(r) for r in results]
 
+@app.get("/history/daily-entry")
+def history_daily_entry(year: int, month: int, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    from sqlalchemy import text
+    import json
+    prefix = f"{year}-{str(month).zfill(2)}%"
+    results = db.execute(text(
+        "SELECT * FROM daily_entries WHERE entry_date::text LIKE :p ORDER BY entry_date ASC"
+    ), {"p": prefix}).mappings().all()
+    rows = []
+    for r in results:
+        row = dict(r)
+        for field in ['feed_water_temps', 'fd_fan1_dampers', 'fd_fan2_dampers']:
+            if row.get(field):
+                try: row[field] = json.loads(row[field])
+                except: row[field] = []
+        rows.append(row)
+    return rows
+
 @app.get("/daily-report/closing/{date}")
 def get_prev_closing(date: str, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)):
@@ -1560,6 +1475,50 @@ def get_daily_entry(date: str, db: Session = Depends(get_db),
             try: row[field] = json.loads(row[field])
             except: row[field] = []
     return row
+
+@app.put("/daily-entry/{date}/opening")
+def set_opening_stock_entry(
+    date: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role("hod"))
+):
+    from sqlalchemy import text
+    opening = float(payload.get("opening_stock", 0))
+    
+    existing = db.execute(text(
+        "SELECT id FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+    ), {"d": date}).mappings().fetchone()
+    
+    if existing:
+        db.execute(text(
+            "UPDATE daily_entries SET opening_coal_stock = :o WHERE entry_date::text = :d"
+        ), {"o": opening, "d": date})
+    else:
+        db.execute(text("""
+            INSERT INTO daily_entries (entry_date, opening_coal_stock, coal_arrival_indian,
+              coal_thermic, total_coal_consumed, closing_stock, steam_sep_opening,
+              steam_sep_closing, steam_sep_consumed, steam_refl_opening, steam_refl_closing,
+              steam_refl_consumed, total_steam, cs_ratio)
+            VALUES (CAST(:d AS DATE), :o, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        """), {"d": date, "o": opening})
+    db.commit()
+    return {"message": "Opening stock set", "opening_stock": opening, "date": date}
+
+@app.get("/daily-entry/closing/{date}")
+def get_prev_closing_entry(date: str, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
+    try:
+        prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return {"closing_stock": None}
+    result = db.execute(text(
+        "SELECT closing_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+    ), {"d": prev_date}).mappings().fetchone()
+    return {"closing_stock": result['closing_stock'] if result else None, "date": prev_date}
+
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
 

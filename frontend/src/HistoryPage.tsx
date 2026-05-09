@@ -24,27 +24,44 @@ export default function HistoryPage({ token, onBack }: Props) {
   const fetchData = async () => {
     setLoading(true);
     setSelectedDate(null);
+    const headers = { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` };
+
     try {
-      const endpoint = section === 'boiler'
-        ? `/history/boiler?year=${year}&month=${month}`
-        : `/history/power?year=${year}&month=${month}`;
+      if (section === 'boiler') {
+        // Fetch BOTH existing history and the new daily entries
+        const res1 = await fetch(`${API}/history/boiler?year=${year}&month=${month}`, { headers });
+        const res2 = await fetch(`${API}/history/daily-entry?year=${year}&month=${month}`, { headers });
 
-      const res = await fetch(`${API}${endpoint}`, {
-        headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` }
-      });
+        // 🛑 ADD THIS AUTO-LOGOUT CHECK HERE 🛑
+        if (res1.status === 401 || res2.status === 401) {
+          console.warn("Session expired. Logging out automatically...");
+          localStorage.removeItem('token');     // Destroy the dead token
+          window.location.href = '/login';      // Kick them back to the login screen
+          return;                               // Stop running the rest of the code
+        }
 
-      // 🛑 ADD THIS AUTO-LOGOUT CHECK HERE 🛑
-      if (res.status === 401) {
-        console.warn("Session expired. Logging out automatically...");
-        localStorage.removeItem('token');     // Destroy the dead token
-        window.location.href = '/login';      // Kick them back to the login screen
-        return;                               // Stop running the rest of the code
+        const d1 = res1.ok ? await res1.json() : [];
+        const d2 = res2.ok ? await res2.json() : [];
+
+        console.log("Backend Response (Boiler):", d1, "Daily Entry:", d2);
+        // Merge the old array and the new array together
+        setData([...(Array.isArray(d1) ? d1 : []), ...(Array.isArray(d2) ? d2 : [])]);
+
+      } else {
+        // Power stays exactly the same
+        const res = await fetch(`${API}/history/power?year=${year}&month=${month}`, { headers });
+
+        if (res.status === 401) {
+          console.warn("Session expired. Logging out automatically...");
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          return;
+        }
+
+        const d = await res.json();
+        console.log("Backend Response:", d);
+        setData(Array.isArray(d) ? d : []);
       }
-
-      const d = await res.json();
-      // ADD THIS LINE:
-      console.log("Backend Response:", d);
-      setData(Array.isArray(d) ? d : []);
     } catch {
       setData([]);
     } finally {
@@ -106,11 +123,11 @@ export default function HistoryPage({ token, onBack }: Props) {
   // Group data by date
   const byDate: Record<string, any[]> = {};
   data.forEach(item => {
-    const date = String(item.log_date || item.report_date || item.reading_date || '').slice(0, 10);
+    // ✅ Added item.entry_date so the calendar can read the new daily entries!
+    const date = String(item.log_date || item.report_date || item.reading_date || item.entry_date || '').slice(0, 10);
     if (!byDate[date]) byDate[date] = [];
     byDate[date].push(item);
   });
-
   return (
     <div style={s.page}>
       {/* Header */}
@@ -149,7 +166,7 @@ export default function HistoryPage({ token, onBack }: Props) {
         </div>
       </div>
 
-            {/* 👇 ADD THIS NEW LOADING CHECK HERE 👇 */}
+      {/* 👇 ADD THIS NEW LOADING CHECK HERE 👇 */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#555' }}>
           <div style={{ fontSize: '40px', marginBottom: '15px' }}>⏳</div>
@@ -160,57 +177,57 @@ export default function HistoryPage({ token, onBack }: Props) {
         </div>
       ) : (
         <> {/* This invisible tag groups the banner and calendar together */}
-        
-      {/* Monthly Download Banner — clean full-width card */}
-      <div style={s.downloadBanner}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 20 }}>{section === 'boiler' ? '🔥' : '⚡'}</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460' }}>
-              {section === 'boiler' ? 'Boiler Monthly Report' : 'Power Monthly Report'}
-            </div>
-            <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]} {year} — all entries compiled
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={section === 'boiler' ? downloadMonthlyBoilerExcel : downloadMonthlyPowerExcel}
-          style={s.downloadBtn}>
-          📥 Download Monthly Excel
-        </button>
-      </div>
 
-      {/* Calendar day grid */}
-      <div style={s.calGrid}>
-        {Array.from({ length: daysInMonth }, (_, i) => {
-          const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
-          const hasData = !!byDate[d];
-          const isSelected = selectedDate === d;
-          return (
-            <button
-              key={d}
-              style={{
-                ...s.dayBtn,
-                background: isSelected ? '#0f3460'
-                  : hasData ? '#dbeafe' : '#f8f9fa',
-                color: isSelected ? '#fff'
-                  : hasData ? '#1d4ed8' : '#aaa',
-                border: hasData ? '1px solid #93c5fd' : '1px solid #e0e0e0',
-                fontWeight: hasData ? 700 : 400,
-              }}
-              onClick={() => hasData && setSelectedDate(d)}
-            >
-              <div style={{ fontSize: 14 }}>{i + 1}</div>
-              {hasData && (
-                <div style={{ fontSize: 9, marginTop: 2 }}>
-                  {byDate[d].length} {section === 'boiler' ? 'entries' : 'record'}
+          {/* Monthly Download Banner — clean full-width card */}
+          <div style={s.downloadBanner}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 20 }}>{section === 'boiler' ? '🔥' : '⚡'}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460' }}>
+                  {section === 'boiler' ? 'Boiler Monthly Report' : 'Power Monthly Report'}
                 </div>
-              )}
+                <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]} {year} — all entries compiled
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={section === 'boiler' ? downloadMonthlyBoilerExcel : downloadMonthlyPowerExcel}
+              style={s.downloadBtn}>
+              📥 Download Monthly Excel
             </button>
-          );
-        })}
-      </div>
+          </div>
+
+          {/* Calendar day grid */}
+          <div style={s.calGrid}>
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const d = `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
+              const hasData = !!byDate[d];
+              const isSelected = selectedDate === d;
+              return (
+                <button
+                  key={d}
+                  style={{
+                    ...s.dayBtn,
+                    background: isSelected ? '#0f3460'
+                      : hasData ? '#dbeafe' : '#f8f9fa',
+                    color: isSelected ? '#fff'
+                      : hasData ? '#1d4ed8' : '#aaa',
+                    border: hasData ? '1px solid #93c5fd' : '1px solid #e0e0e0',
+                    fontWeight: hasData ? 700 : 400,
+                  }}
+                  onClick={() => hasData && setSelectedDate(d)}
+                >
+                  <div style={{ fontSize: 14 }}>{i + 1}</div>
+                  {hasData && (
+                    <div style={{ fontSize: 9, marginTop: 2 }}>
+                      {byDate[d].length} {section === 'boiler' ? 'entries' : 'record'}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
         </>
       )}
