@@ -145,6 +145,7 @@ class PowerConsumptionCreate(BaseModel):
     diesel_opening_stock: float = 0
     diesel_received: float = 0
     diesel_consumed: float = 0
+    other_consumed: Optional[float] = 0
     dg_generated_units: float = 0
     dg_reason: Optional[str] = None
     voltage_r_morning: Optional[float] = None

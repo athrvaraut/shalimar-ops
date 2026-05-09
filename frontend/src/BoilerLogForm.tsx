@@ -332,18 +332,28 @@ export default function BoilerLogForm({ token, onBack }: Props) {
             readOnly={locked} />
         </div>
 
+        {/* Replace the existing button section */}
         {error && <div style={s.errorBox}>❌ {error}</div>}
         {success && <div style={s.successBox}>{success}</div>}
 
-        {
-          !locked && (
-            <button type="submit"
+        {/* Show button if: not locked, OR locked but has new values in previously empty slots */}
+        {(() => {
+          const hasNewFW = fwNums.some((v, i) => v !== null && !serverFW[i]);
+          const hasNewFD1 = fd1Nums.some((v, i) => v !== null && !serverFD1[i]);
+          const hasNewFD2 = fd2Nums.some((v, i) => v !== null && !serverFD2[i]);
+          const hasNewData = hasNewFW || hasNewFD1 || hasNewFD2;
+          const showButton = !locked || hasNewData;
+
+          return showButton ? (
+            <button
+              type="submit"
               style={loading ? s.btnDisabled : s.btn}
-              disabled={loading}>
+              disabled={loading}
+            >
               {loading ? 'Saving...' : existingId ? '💾 Update Entry' : '📤 Submit Entry'}
             </button>
-          )
-        }
+          ) : null;
+        })()}
       </form >
     </div >
   );

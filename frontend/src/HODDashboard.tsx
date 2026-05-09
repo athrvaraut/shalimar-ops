@@ -42,6 +42,7 @@ interface LogEntry {
 export default function HODDashboard({ token, onBack }: {
   token: string; onBack: () => void;
 }) {
+  const [dailyEntry, setDailyEntry] = useState<any>(null);
   const [coalOpeningStock, setCoalOpeningStock] = useState<number | null>(null);
   const [suggestedOpening, setSuggestedOpening] = useState<number | null>(null);
   const [coalStockApproved, setCoalStockApproved] = useState(false);
@@ -96,10 +97,19 @@ export default function HODDashboard({ token, onBack }: {
 
   const fetchBoiler = async () => {
     setLoading(true);
+    const today = new Date().toISOString().split('T')[0];
     try {
+      // Fetch boiler log entries
       const res = await fetch(`${API}/boiler-log/today`, { headers: authHeader });
       const data = await res.json();
       setBoilerEntries(Array.isArray(data) ? data : []);
+
+      // Also fetch today's daily entry summary
+      const res2 = await fetch(`${API}/daily-entry/${today}`, { headers: authHeader });
+      if (res2.ok) {
+        const d2 = await res2.json();
+        setDailyEntry(d2); // we'll add this state
+      }
     } catch { setBoilerEntries([]); }
     finally { setLoading(false); }
   };
@@ -207,9 +217,84 @@ export default function HODDashboard({ token, onBack }: {
       {/* ── BOILER LOG ── */}
       {tab === 'boiler' && (
         <div style={s.content}>
+
+          {/* 1. Coal stock FIRST */}
+          <div style={{
+            background: coalStockApproved ? '#f0fff4' : '#fffbeb',
+            border: `1.5px solid ${coalStockApproved ? '#86efac' : '#fcd34d'}`,
+            borderRadius: 12,
+            padding: '14px 18px',
+            marginBottom: 16,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 4 }}>
+                  🪨 Today's Opening Coal Stock (MT)
+                </div>
+                {suggestedOpening && (
+                  <div style={{ fontSize: 11, color: '#666' }}>
+                    Suggested from yesterday's closing: <strong>{suggestedOpening} MT</strong>
+                  </div>
+                )}
+                {!suggestedOpening && (
+                  <div style={{ fontSize: 11, color: '#888' }}>Yesterday's closing not found — enter manually</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="number" step="any"
+                  value={coalStockInput}
+                  onChange={e => { setCoalStockInput(e.target.value); setCoalStockApproved(false); }}
+                  placeholder="e.g. 919.175"
+                  style={{ padding: '8px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 14, width: 130, outline: 'none' }}
+                />
+                <button
+                  onClick={approveOpeningStock}
+                  style={{
+                    background: coalStockApproved ? '#10b981' : '#0f3460',
+                    color: '#fff', border: 'none', borderRadius: 8,
+                    padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  }}
+                >
+                  {coalStockApproved ? '✓ Approved' : '✓ Approve & Set'}
+                </button>
+              </div>
+            </div>
+            {coalStockMsg && <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{coalStockMsg}</div>}
+          </div>
+
+          {/* 2. Info bar SECOND */}
           <div style={s.sectionInfo}>
             📋 Today's boiler log entries — submitted automatically by operators every 2 hours
           </div>
+
+          {dailyEntry && (
+            <div style={{ background: '#f0f9ff', borderRadius: 12, padding: '14px 18px', marginBottom: 12, border: '1px solid #bae6fd' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 10 }}>
+                📊 Today's Daily Summary — {dailyEntry.operator_name}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                {[
+                  ['Coal Arrival', `${dailyEntry.coal_arrival_indian ?? 0} MT`],
+                  ['Steam SEP', `${dailyEntry.steam_sep_consumed ?? 0} KG`],
+                  ['Steam REFL', `${dailyEntry.steam_refl_consumed ?? 0} KG`],
+                  ['C/S Ratio', `${dailyEntry.cs_ratio ?? '—'}`],
+                  ['Avg Feed Water', `${dailyEntry.avg_feed_water ?? '—'}°C`],
+                  ['Avg FD Fan 1', `${dailyEntry.avg_fd_fan1 ?? '—'}%`],
+                  ['Avg FD Fan 2', `${dailyEntry.avg_fd_fan2 ?? '—'}%`],
+                  ['Coal Bunker', `${dailyEntry.coal_bunker_pct ?? '—'}%`],
+                ].map(([label, val]) => (
+                  <div key={label as string} style={{ background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              {dailyEntry.remarks && <div style={{ marginTop: 8, fontSize: 12, color: '#555' }}>📝 {dailyEntry.remarks}</div>}
+            </div>
+          )}
+
           {loading ? (
             <div style={s.empty}>{loadingMsg}</div>
           ) : boilerEntries.length === 0 ? (
@@ -279,70 +364,6 @@ export default function HODDashboard({ token, onBack }: {
               )}
             </div>
           ))}
-
-          {/* Coal Opening Stock Approval Card */}
-          <div style={{
-            background: coalStockApproved ? '#f0fff4' : '#fffbeb',
-            border: `1.5px solid ${coalStockApproved ? '#86efac' : '#fcd34d'}`,
-            borderRadius: 12,
-            padding: '14px 18px',
-            marginBottom: 16,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f3460', marginBottom: 4 }}>
-                  🪨 Today's Opening Coal Stock (MT)
-                </div>
-                {suggestedOpening && (
-                  <div style={{ fontSize: 11, color: '#666' }}>
-                    Suggested from yesterday's closing: <strong>{suggestedOpening} MT</strong>
-                  </div>
-                )}
-                {!suggestedOpening && (
-                  <div style={{ fontSize: 11, color: '#888' }}>Yesterday's closing not found — enter manually</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="number"
-                  step="any"
-                  value={coalStockInput}
-                  onChange={e => { setCoalStockInput(e.target.value); setCoalStockApproved(false); }}
-                  placeholder="e.g. 919.175"
-                  style={{
-                    padding: '8px 12px',
-                    border: '1.5px solid #e0e0e0',
-                    borderRadius: 8,
-                    fontSize: 14,
-                    width: 130,
-                    outline: 'none',
-                  }}
-                />
-                <button
-                  onClick={approveOpeningStock}
-                  style={{
-                    background: coalStockApproved ? '#10b981' : '#0f3460',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '9px 16px',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  {coalStockApproved ? '✓ Approved' : '✓ Approve & Set'}
-                </button>
-              </div>
-            </div>
-            {coalStockMsg && (
-              <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{coalStockMsg}</div>
-            )}
-          </div>
-
-          {message && <div style={s.msgBox}>{message}</div>}
-
         </div>
       )}
 

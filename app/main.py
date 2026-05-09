@@ -376,76 +376,84 @@ def get_daily_report(
         
     return report
 
+from fastapi import HTTPException
+
 @app.post("/power-consumption")
 def submit_power(
     data: schemas.PowerConsumptionCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.require_role("hod", "operator", "assistant"))
 ):
-    from sqlalchemy import text
-    date_str = str(data.reading_date)
+    try:
+        from sqlalchemy import text
+        date_str = str(data.reading_date)
 
-    existing = db.execute(text(
-        "SELECT id FROM power_consumption WHERE reading_date::text = :d LIMIT 1"
-    ), {"d": date_str}).mappings().fetchone()
+        # 👇 Notice how EVERYTHING down to the returns is indented inside the try block
+        existing = db.execute(text(
+            "SELECT id FROM power_consumption WHERE reading_date::text = :d LIMIT 1"
+        ), {"d": date_str}).mappings().fetchone()
 
-    params = {
-        "d": date_str, "uid": str(current_user.id),
-        "sep": data.sep_units or 0, "prep": data.prep_units or 0,
-        "solar": data.solar_units or 0, "silo": data.silo_units or 0,
-        "doc": data.doc_units or 0, "dsilo": data.dsilo_units or 0,
-        "acm": data.acm_units or 0, "boiler": data.boiler_units or 0,
-        "chp": data.chp_units or 0, "dm": data.dm_units or 0,
-        "ug": data.ug_tank_units or 0, "ref": data.refinery_units or 0,
-        "etp": data.etp_units or 0, "pack": data.packing_units or 0,
-        "admin": data.admin_units or 0, "dg": data.dg_units or 0,
-        "msedcl": data.msedcl_units or 0,
-        "kvah": data.power_kvah or 0, "pf": data.power_factor or 0,
-        "d_open": data.diesel_opening_stock or 0,
-        "d_recv": data.diesel_received or 0,
-        "d_cons": data.diesel_consumed or 0,
-        "dg_gen": data.dg_generated_units or 0,
-        "dg_r": data.dg_reason or '',
-    }
+        params = {
+            "d": date_str, "uid": str(current_user.id),
+            "sep": data.sep_units or 0, "prep": data.prep_units or 0,
+            "solar": data.solar_units or 0, "silo": data.silo_units or 0,
+            "doc": data.doc_units or 0, "dsilo": data.dsilo_units or 0,
+            "acm": data.acm_units or 0, "boiler": data.boiler_units or 0,
+            "chp": data.chp_units or 0, "dm": data.dm_units or 0,
+            "ug": data.ug_tank_units or 0, "ref": data.refinery_units or 0,
+            "etp": data.etp_units or 0, "pack": data.packing_units or 0,
+            "admin": data.admin_units or 0, "dg": data.dg_units or 0,
+            "msedcl": data.msedcl_units or 0,
+            "kvah": data.power_kvah or 0, "pf": data.power_factor or 0,
+            "d_open": data.diesel_opening_stock or 0,
+            "d_recv": data.diesel_received or 0,
+            "d_cons": data.diesel_consumed or 0,
+            "dg_gen": data.dg_generated_units or 0,
+            "dg_r": data.dg_reason or '',
+        }
 
-    if existing:
-        db.execute(text("""
-            UPDATE power_consumption SET
-            sep_units=:sep, prep_units=:prep, solar_units=:solar,
-            silo_units=:silo, doc_units=:doc, dsilo_units=:dsilo,
-            acm_units=:acm, boiler_units=:boiler, chp_units=:chp,
-            dm_units=:dm, ug_tank_units=:ug, refinery_units=:ref,
-            etp_units=:etp, packing_units=:pack, admin_units=:admin,
-            dg_units=:dg, msedcl_units=:msedcl, power_kvah=:kvah,
-            power_factor=:pf, diesel_opening_stock=:d_open,
-            diesel_received=:d_recv, diesel_consumed=:d_cons,
-            dg_generated_units=:dg_gen, dg_reason=:dg_r
-            WHERE reading_date::text = :d
+        if existing:
+            db.execute(text("""
+                UPDATE power_consumption SET
+                sep_units=:sep, prep_units=:prep, solar_units=:solar,
+                silo_units=:silo, doc_units=:doc, dsilo_units=:dsilo,
+                acm_units=:acm, boiler_units=:boiler, chp_units=:chp,
+                dm_units=:dm, ug_tank_units=:ug, refinery_units=:ref,
+                etp_units=:etp, packing_units=:pack, admin_units=:admin,
+                dg_units=:dg, msedcl_units=:msedcl, power_kvah=:kvah,
+                power_factor=:pf, diesel_opening_stock=:d_open,
+                diesel_received=:d_recv, diesel_consumed=:d_cons,
+                dg_generated_units=:dg_gen, dg_reason=:dg_r
+                WHERE reading_date::text = :d
+            """), params)
+            db.commit()
+            return {"message": "Power report updated", "id": existing['id']}
+
+        result = db.execute(text("""
+            INSERT INTO power_consumption (
+                reading_date, entered_by,
+                sep_units, prep_units, solar_units, silo_units, doc_units,
+                dsilo_units, acm_units, boiler_units, chp_units, dm_units,
+                ug_tank_units, refinery_units, etp_units, packing_units,
+                admin_units, dg_units, msedcl_units, power_kvah, power_factor,
+                diesel_opening_stock, diesel_received, diesel_consumed,
+                dg_generated_units, dg_reason
+            ) VALUES (
+                :d::date, :uid::uuid,
+                :sep, :prep, :solar, :silo, :doc,
+                :dsilo, :acm, :boiler, :chp, :dm,
+                :ug, :ref, :etp, :pack,
+                :admin, :dg, :msedcl, :kvah, :pf,
+                :d_open, :d_recv, :d_cons, :dg_gen, :dg_r
+            ) RETURNING id
         """), params)
         db.commit()
-        return {"message": "Power report updated", "id": existing['id']}
+        new_id = result.fetchone()[0]
+        return {"message": "Power report submitted", "id": new_id}
 
-    result = db.execute(text("""
-        INSERT INTO power_consumption (
-            reading_date, entered_by,
-            sep_units, prep_units, solar_units, silo_units, doc_units,
-            dsilo_units, acm_units, boiler_units, chp_units, dm_units,
-            ug_tank_units, refinery_units, etp_units, packing_units,
-            admin_units, dg_units, msedcl_units, power_kvah, power_factor,
-            diesel_opening_stock, diesel_received, diesel_consumed,
-            dg_generated_units, dg_reason
-        ) VALUES (
-            :d::date, :uid::uuid,
-            :sep, :prep, :solar, :silo, :doc,
-            :dsilo, :acm, :boiler, :chp, :dm,
-            :ug, :ref, :etp, :pack,
-            :admin, :dg, :msedcl, :kvah, :pf,
-            :d_open, :d_recv, :d_cons, :dg_gen, :dg_r
-        ) RETURNING id
-    """), params)
-    db.commit()
-    new_id = result.fetchone()[0]
-    return {"message": "Power report submitted", "id": new_id}
+    except Exception as e:
+        # ✅ The except block matches the indentation of the try block!
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/power-consumption/today")
 def get_todays_power(
