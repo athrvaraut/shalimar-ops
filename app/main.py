@@ -966,10 +966,22 @@ def export_power_monthly_excel(
         for i, rec in enumerate(records):
             col = i + 3
             if key == "total_with_solar":
-                # Only sum real data fields (not subtotal markers)
-                val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3])
+                col_l = openpyxl.utils.get_column_letter(col)
+                # Join the tracked subtotal rows together (e.g., C10+C15+C20)
+                parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
+                
+                # Add DG SET row explicitly (It is usually 6 rows above the current summary row)
+                dg_row = current_row - 6 
+                val = f'=({parts})+{col_l}{dg_row}'
+                
             elif key == "total_without_solar":
-                val = sum((rec.get(f[2], 0) or 0) for f in SECTION_GROUPS if f[2] and not f[3] and f[2] != 'solar_units')
+                col_l = openpyxl.utils.get_column_letter(col)
+                parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
+                dg_row = current_row - 6
+                solar_ref = f'{col_l}{solar_row_num}' if solar_row_num else '0'
+                
+                # Formula: (Subtotals + DG) - Solar
+                val = f'=({parts}+{col_l}{dg_row})-{solar_ref}'
             elif key == "msedcl":
                 val = rec.get('msedcl_units', 0) or 0
             elif key == "kvah":
