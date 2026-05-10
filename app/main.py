@@ -1218,6 +1218,12 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             # 👇 1. SMART DATA FETCH (Using pre-calculated daily entries) 👇
             current_date = str(rec.get('report_date') or rec.get('entry_date'))[:10]
             
+            # 👇 DEFINITIONS MOVED HERE 👇
+            arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
+            thermic = sf(rec.get('coal_thermic'))
+            opening = sf(rec.get('opening_coal_stock'))
+            # 👆 ---------------------- 👆
+            
             # Use stored steam values from daily_entries if available
             steam_sep_consumed = sf(rec.get('steam_sep_consumed'))
             steam_refl_consumed = sf(rec.get('steam_refl_consumed'))
@@ -1267,11 +1273,6 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             col_totals[11] += (steam_sep or 0)
             col_totals[12] += (steam_ref or 0)
             col_totals[13] += m_val
-
-            # 2. Get the standard manual values
-            arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
-            thermic = sf(rec.get('coal_thermic'))
-            opening = sf(rec.get('opening_coal_stock'))
 
             def wc(col, val):
                 c = ws.cell(r, col, val)
@@ -1477,9 +1478,30 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     thermic = data.get('coal_thermic') or 0
     arrival_in = data.get('coal_arrival_indian') or 0
     arrival_im = data.get('coal_arrival_imported') or 0
+    
+    entry_date = data.get('entry_date')
     opening = data.get('opening_coal_stock') or 0
+    
+    # 👇 AUTO-FETCH YESTERDAY'S CLOSING 👇
+    if not opening and entry_date:
+        from datetime import datetime, timedelta
+        from sqlalchemy import text
+        try:
+            prev_date = (datetime.strptime(entry_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+            prev = db.execute(text(
+                "SELECT closing_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+            ), {"d": prev_date}).mappings().fetchone()
+            if prev and prev['closing_stock']:
+                opening = float(prev['closing_stock'])
+        except Exception as e:
+            pass
+    # 👆 -------------------------------- 👆
+
+    # Now calculate totals using the (potentially updated) opening value
     total_coal = sep + refl + thermic
     closing = opening + arrival_in + arrival_im - total_coal
+
+    # Auto-calculate steam
 
     # Auto-calculate steam
     sep_open = data.get('steam_sep_opening') or 0

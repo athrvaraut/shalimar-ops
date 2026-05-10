@@ -259,7 +259,33 @@ export default function HistoryPage({ token, onBack }: Props) {
             </div>
           )}
           {section === 'boiler' && (
-            <BoilerDetail entries={byDate[selectedDate]} />
+            <>
+              <BoilerDetail entries={byDate[selectedDate].filter((e: any) => e.log_time)} />
+              {byDate[selectedDate].filter((e: any) => e.entry_date).map((e: any, i: number) => (
+                <div key={i} style={{ background:'#fff', borderRadius:10, padding:'14px', marginBottom:10, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#0f3460', marginBottom:10 }}>📊 Daily Summary — {e.operator_name}</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                    {[
+                      ['Steam SEP', e.steam_sep_consumed, 'KG'],
+                      ['Steam REFL', e.steam_refl_consumed, 'KG'],
+                      ['Total Steam', e.total_steam, 'KG'],
+                      ['C/S Ratio', e.cs_ratio, ''],
+                      ['Avg Feed Water', e.avg_feed_water, '°C'],
+                      ['Coal Arrival', e.coal_arrival_indian, 'MT'],
+                      ['Coal Bunker', e.coal_bunker_pct, '%'],
+                      ['Avg FD Fan 1', e.avg_fd_fan1, '%'],
+                      ['Avg FD Fan 2', e.avg_fd_fan2, '%'],
+                    ].map(([label, val, unit]) => (
+                      <div key={label as string} style={{ background:'#f8f9fa', borderRadius:6, padding:'7px 10px' }}>
+                        <div style={{ fontSize:10, color:'#888', textTransform:'uppercase' as const, marginBottom:3 }}>{label}</div>
+                        <div style={{ fontSize:12, fontWeight:600 }}>{val != null ? `${val} ${unit}` : '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {e.remarks && <div style={{ marginTop:8, fontSize:12, color:'#555', background:'#f0fdf4', padding:'6px 10px', borderRadius:6 }}>📝 {e.remarks}</div>}
+                </div>
+              ))}
+            </>
           )}
           {section === 'power' && (
             <PowerDetail entries={byDate[selectedDate]} />
