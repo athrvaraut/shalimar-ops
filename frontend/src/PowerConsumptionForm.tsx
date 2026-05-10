@@ -5,22 +5,20 @@ interface Props { token: string; onBack: () => void; }
 const today = () => new Date().toISOString().split('T')[0];
 
 const SECTIONS = [
-  { key: 'sep_units', label: 'SEP' },
   { key: 'prep_units', label: 'PREP' },
-  { key: 'solar_units', label: 'Solar' },
-  { key: 'silo_units', label: 'Silo' },
+  { key: 'sep_units', label: 'SEP' },
   { key: 'doc_units', label: 'DOC' },
-  { key: 'dsilo_units', label: 'D-Silo' },
-  { key: 'acm_units', label: 'ACM' },
-  { key: 'boiler_units', label: 'Boiler' },
+  { key: 'silo_units', label: 'SILO' },
+  { key: 'dsilo_units', label: 'D-SILO' },
+  { key: 'boiler_units', label: 'BOILER' },
   { key: 'chp_units', label: 'CHP' },
-  { key: 'dm_units', label: 'DM Plant' },
-  { key: 'ug_tank_units', label: 'UG Tank' },
-  { key: 'refinery_units', label: 'Refinery' },
-  { key: 'etp_units', label: 'ETP' },
-  { key: 'packing_units', label: 'Packing' },
-  { key: 'admin_units', label: 'Admin' },
-  { key: 'dg_units', label: 'DG Set' },
+  { key: 'dm_units', label: 'DM' },
+  { key: 'refinery_units', label: 'REFINERY' },
+  { key: 'etp_units', label: 'ETP/ACID' },
+  { key: 'admin_units', label: 'OIL ADMIN' },
+  { key: 'ug_tank_units', label: 'UG TANK' },
+  { key: 'packing_units', label: 'PACKING' },
+  { key: 'acm_units', label: 'ACM SOYA BADI' },
 ];
 
 export default function PowerConsumptionForm({ token, onBack }: Props) {

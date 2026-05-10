@@ -114,9 +114,14 @@ export default function HODDashboard({ token, onBack }: {
   const fetchPower = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/power-consumption/recent`, { headers: authHeader });
-      const data = await res.json();
-      setPowerReports(Array.isArray(data) ? data : []);
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`${API}/power-consumption/date/${today}`, { headers: authHeader });
+      if (res.ok) {
+        const data = await res.json();
+        setPowerReports(data ? [data] : []);
+      } else {
+        setPowerReports([]);
+      }
     } catch { setPowerReports([]); }
     finally { setLoading(false); }
   };

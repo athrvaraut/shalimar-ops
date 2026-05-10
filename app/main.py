@@ -671,7 +671,7 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         cell(13, 2, safe_float(sep_open) or None, align=center, b=border)
         cell(13, 3, safe_float(sep_close) or None, align=center, b=border)
         cell(13, 4, None, b=border)
-        c = ws.cell(13, 5, sep_consumed if sep_consumed else None)
+        c = ws.cell(13, 5, '=C13-B13')
         c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
         cell(13, 6, None, b=border)
         cell(13, 7, avg_fw, align=center, b=border)
@@ -689,10 +689,10 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         cell(17, 2, safe_float(refl_open) or None, align=center, b=border)
         cell(17, 3, safe_float(refl_close) or None, align=center, b=border)
         cell(17, 4, None, b=border)
-        c = ws.cell(17, 5, refl_consumed if refl_consumed else None)
+        c = ws.cell(17, 5, '=C17-B17')
         c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
         cell(17, 6, None, b=border)
-        c = ws.cell(17, 7, total_steam if total_steam else None)
+        c = ws.cell(17, 7, '=E13+E17')
         c.font = bold; c.fill = yellow_fill; c.alignment = center; c.border = border
         cell(17, 8, None, b=border)
         c = ws.cell(17, 9, '=IF(I8>0,G17/I8,"")')
@@ -886,6 +886,8 @@ def export_power_monthly_excel(
     group_data_rows = []  # (start_row, end_row) for each group
     current_group_start = data_rows_start
     current_row = data_rows_start
+    subtotal_row_nums = []
+    solar_row_num = None
 
     for sr, name, field, is_subtotal in SECTION_GROUPS:
         # ALWAYS set border for Col 1 and 2 first
@@ -916,6 +918,10 @@ def export_power_monthly_excel(
             ws.cell(current_row, total_col).border = border
             
             current_group_start = current_row + 1 # Next group starts after subtotal
+            
+            # 👇 STEP 2a: TRACK SUBTOTAL ROW 👇
+            subtotal_row_nums.append(current_row)
+            
             current_row += 1
             continue
 
@@ -935,6 +941,11 @@ def export_power_monthly_excel(
         ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
         ws.cell(current_row, total_col).border = border
         ws.cell(current_row, total_col).alignment = center
+        
+        # 👇 STEP 2b: TRACK SOLAR ROW 👇
+        if name == 'SOLAR':  # Note: Ensure 'SOLAR' matches your exact section label!
+            solar_row_num = current_row
+            
         current_row += 1
 
     # Summary rows — with borders and yellow fill
@@ -1043,6 +1054,11 @@ def export_power_monthly_excel(
             c = ws.cell(dr, col_idx, val)
             c.border = border
             c.alignment = center
+
+        c = ws.cell(dr, 8, f'=(B{dr}+IF(C{dr}="",0,C{dr}))-(IF(D{dr}="",0,D{dr})+IF(E{dr}="",0,E{dr}))')
+        c.border = border
+        c.alignment = center
+        c.font = Font(bold=True)
         
         prev_closing = d_close
 
@@ -1626,6 +1642,23 @@ def get_prev_closing_entry(date: str, db: Session = Depends(get_db),
         "SELECT closing_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
     ), {"d": prev_date}).mappings().fetchone()
     return {"closing_stock": result['closing_stock'] if result else None, "date": prev_date}
+
+
+@app.get("/daily-entry/date/{date}")
+def get_daily_entry_by_date(date: str, db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)):
+    import json
+    result = db.execute(text(
+        "SELECT * FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+    ), {"d": date}).mappings().fetchone()
+    if not result:
+        raise HTTPException(status_code=404, detail="No entry for this date")
+    row = dict(result)
+    for field in ['feed_water_temps', 'fd_fan1_dampers', 'fd_fan2_dampers']:
+        if row.get(field):
+            try: row[field] = json.loads(row[field])
+            except: row[field] = []
+    return row
 
 
 # ─── HEALTH CHECK ─────────────────────────────────────────
