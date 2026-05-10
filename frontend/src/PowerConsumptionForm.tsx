@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface Props { token: string; onBack: () => void; }
 
@@ -44,6 +44,9 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
     return base;
   };
 
+  const [locked, setLocked] = useState(false);
+  const [existingId, setExistingId] = useState<number | null>(null);
+  const [fetchingDate, setFetchingDate] = useState(false);
   const [form, setForm] = useState(initForm());
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -58,6 +61,42 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
   const solarUnits = parseFloat(form.solar_units) || 0;
   const msedclUnits = parseFloat(form.msedcl_units) || 0;
   const gridUnits = msedclUnits + (parseFloat(form.dg_units) || 0);
+
+  useEffect(() => {
+    if (!form.reading_date) return;
+    const authToken = token || localStorage.getItem('token') || '';
+    setFetchingDate(true);
+    fetch(`https://shalimar-ops.onrender.com/power-consumption/date/${form.reading_date}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    }).then(r => {
+      if (r.ok) return r.json();
+      throw new Error('not found');
+    }).then(data => {
+      if (data && data.id) {
+        setExistingId(data.id);
+        setLocked(true);
+        // Pre-fill the form
+        SECTIONS.forEach(sec => {
+          if (data[sec.key] !== undefined) {
+            setForm((prev: any) => ({ ...prev, [sec.key]: String(data[sec.key] || '') }));
+          }
+        });
+        setForm((prev: any) => ({
+          ...prev,
+          msedcl_kwh: String(data.msedcl_units || ''),
+          power_kvah: String(data.power_kvah || ''),
+          diesel_opening_stock: String(data.diesel_opening_stock || ''),
+          diesel_received: String(data.diesel_received || ''),
+          diesel_consumed: String(data.diesel_consumed || ''),
+          dg_generated_units: String(data.dg_generated_units || ''),
+          dg_reason: data.dg_reason || '',
+        }));
+      }
+    }).catch(() => {
+      setLocked(false);
+      setExistingId(null);
+    }).finally(() => setFetchingDate(false));
+  }, [form.reading_date]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +117,13 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
       // If it's empty, send null (or 0) so the backend doesn't crash
       payload[f] = payload[f] !== '' && payload[f] !== undefined ? parseFloat(payload[f]) : 0;
     });
+
+    // Map msedcl_kwh → msedcl_units (backend column name)
+    payload.msedcl_units = parseFloat(form.msedcl_kwh) || 0;
+    // Auto-calculate power factor
+    if (payload.msedcl_units > 0 && payload.power_kvah > 0) {
+      payload.power_factor = parseFloat((payload.msedcl_units / payload.power_kvah).toFixed(4));
+    }
 
     try {
       const res = await fetch('https://shalimar-ops.onrender.com/power-consumption', {
@@ -114,16 +160,33 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
         </div>
       </div>
 
+      {/* After the header div, before the form */}
+      {locked && (
+        <div style={{
+          background: '#fef9c3', borderBottom: '1px solid #fde047',
+          padding: '10px 20px', fontSize: 13, color: '#854d0e', textAlign: 'center' as const
+        }}>
+          🔒 Power entry for {form.reading_date} already submitted.{' '}
+          <button onClick={() => setLocked(false)}
+            style={{
+              background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6,
+              padding: '4px 12px', cursor: 'pointer', fontWeight: 700, marginLeft: 8
+            }}>
+            ✏️ Modify
+          </button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} style={s.form}>
 
         {/* Date */}
         <div style={s.section}>
           <div style={s.sectionTitle}>📅 Report Date</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={s.field}>
               <label style={s.label}>Date *</label>
               <input style={s.input} type="date" value={form.reading_date}
-                onChange={e => set('reading_date', e.target.value)} required />
+                onChange={e => set('reading_date', e.target.value)} disabled={locked} required />
             </div>
             <div style={s.field}>
               <label style={s.label}>Operator Name *</label>
@@ -131,7 +194,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
                 value={form.operator_name}
                 onChange={e => set('operator_name', e.target.value)}
                 placeholder="e.g. Pankaj Bhejraj"
-                required />
+                disabled={locked} required />
             </div>
           </div>
         </div>
@@ -159,7 +222,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
                 <input style={s.input} type="number" step="any"
                   value={form[sec.key]}
                   onChange={e => set(sec.key, e.target.value)}
-                  placeholder="0" />
+                  placeholder="0" disabled={locked} />
               </div>
             ))}
           </div>
@@ -174,14 +237,14 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
               <input style={s.input} type="number" step="any"
                 value={form.msedcl_kwh}
                 onChange={e => set('msedcl_kwh', e.target.value)}
-                placeholder="e.g. 25680" />
+                placeholder="e.g. 25680" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Total kVAh (MSEDCL)</label>
               <input style={s.input} type="number" step="any"
                 value={form.power_kvah}
                 onChange={e => set('power_kvah', e.target.value)}
-                placeholder="e.g. 25710" />
+                placeholder="e.g. 25710" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Power Factor (Auto)</label>
@@ -204,31 +267,31 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
               <label style={s.label}>Diesel Opening Stock (L)</label>
               <input style={s.input} type="number" step="any"
                 value={form.diesel_opening_stock}
-                onChange={e => set('diesel_opening_stock', e.target.value)} placeholder="—" />
+                onChange={e => set('diesel_opening_stock', e.target.value)} placeholder="—" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Diesel Received (L)</label>
               <input style={s.input} type="number" step="any"
                 value={form.diesel_received}
-                onChange={e => set('diesel_received', e.target.value)} placeholder="—" />
+                onChange={e => set('diesel_received', e.target.value)} placeholder="—" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>D.G. Consumption (L)</label>
               <input style={s.input} type="number" step="any"
                 value={form.diesel_consumed}
-                onChange={e => set('diesel_consumed', e.target.value)} placeholder="—" />
+                onChange={e => set('diesel_consumed', e.target.value)} placeholder="—" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Other Consumption (L)</label>
               <input style={s.input} type="number" step="any"
                 value={form.other_consumed}
-                onChange={e => set('other_consumed', e.target.value)} placeholder="—" />
+                onChange={e => set('other_consumed', e.target.value)} placeholder="—" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>DG Units Generated</label>
               <input style={s.input} type="number" step="any"
                 value={form.dg_generated_units}
-                onChange={e => set('dg_generated_units', e.target.value)} placeholder="—" />
+                onChange={e => set('dg_generated_units', e.target.value)} placeholder="—" disabled={locked} />
             </div>
           </div>
           <div style={{ ...s.field, marginTop: 10 }}>
@@ -236,7 +299,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
             <input style={s.input} type="text"
               value={form.dg_reason}
               onChange={e => set('dg_reason', e.target.value)}
-              placeholder="e.g. Power failure 14:00–15:30" />
+              placeholder="e.g. Power failure 14:00–15:30" disabled={locked} />
           </div>
         </div>
 
@@ -258,21 +321,21 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_r_morning}
                 onChange={e => set('voltage_r_morning', e.target.value)}
-                placeholder="e.g. 374.7" />
+                placeholder="e.g. 374.7" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>L2Y Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_y_morning}
                 onChange={e => set('voltage_y_morning', e.target.value)}
-                placeholder="e.g. 373.6" />
+                placeholder="e.g. 373.6" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>L3B Voltage (V)</label>
               <input style={s.input} type="number" step="0.1"
                 value={form.voltage_b_morning}
                 onChange={e => set('voltage_b_morning', e.target.value)}
-                placeholder="e.g. 374.4" />
+                placeholder="e.g. 374.4" disabled={locked} />
             </div>
           </div>
           <div style={s.row3}>
@@ -281,21 +344,21 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
               <input style={s.input} type="number"
                 value={form.current_l1}
                 onChange={e => set('current_l1', e.target.value)}
-                placeholder="e.g. 1558" />
+                placeholder="e.g. 1558" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Phase Y Current (A)</label>
               <input style={s.input} type="number"
                 value={form.current_l2}
                 onChange={e => set('current_l2', e.target.value)}
-                placeholder="e.g. 1688" />
+                placeholder="e.g. 1688" disabled={locked} />
             </div>
             <div style={s.field}>
               <label style={s.label}> Phase B Current (A)</label>
               <input style={s.input} type="number"
                 value={form.current_l3}
                 onChange={e => set('current_l3', e.target.value)}
-                placeholder="e.g. 1557" />
+                placeholder="e.g. 1557" disabled={locked} />
             </div>
           </div>
 
@@ -318,8 +381,8 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
           })()}
         </div>
 
-        <button type="submit" style={loading ? s.btnDisabled : s.btn} disabled={loading}>
-          {loading ? 'Submitting...' : '📤 Submit Power Report'}
+        <button type="submit" style={loading || locked ? s.btnDisabled : s.btn} disabled={loading || locked}>
+          {loading ? 'Processing...' : existingId ? '💾 Update Power Report' : '📤 Submit Power Report'}
         </button>
       </form>
     </div>
