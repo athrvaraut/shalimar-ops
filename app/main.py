@@ -535,6 +535,20 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
 
         # Now build Excel with actual values (not formulas that reference empty cells)
         opening_stock = safe_float(report.get('opening_coal_stock')) if report else None
+        
+        # Always override with previous day's actual closing — so Excel is always correct
+        try:
+            from datetime import timedelta as _td
+            prev_date = (dt.strptime(date, "%Y-%m-%d") - _td(days=1)).strftime("%Y-%m-%d")
+            
+            prev_result = db.execute(text(
+                "SELECT closing_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+            ), {"d": prev_date}).mappings().fetchone()
+            
+            if prev_result and prev_result['closing_stock']:
+                opening_stock = float(prev_result['closing_stock'])
+        except:
+            pass  # keep whatever was in report
         arrival_ind = safe_float(report.get('coal_arrival_indian')) if report else None
         arrival_imp = safe_float(report.get('coal_arrival_imported', 0)) if report else 0
         coal_thermic = safe_float(report.get('coal_thermic', 0)) if report else 0
@@ -1480,10 +1494,10 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     arrival_im = data.get('coal_arrival_imported') or 0
     
     entry_date = data.get('entry_date')
-    opening = data.get('opening_coal_stock') or 0
+    opening = 0  # Always auto-fetch — field is hidden from form
     
     # 👇 AUTO-FETCH YESTERDAY'S CLOSING 👇
-    if not opening and entry_date:
+    if entry_date:  # Always try to get yesterday's closing
         from datetime import datetime, timedelta
         from sqlalchemy import text
         try:
