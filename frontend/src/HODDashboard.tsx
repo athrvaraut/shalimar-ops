@@ -94,15 +94,20 @@ export default function HODDashboard({ token, onBack }: {
 
   const fetchBoiler = async () => {
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
+    
+    // 👇 Calculate exactly 24 hours ago 👇
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = yesterday.toISOString().split('T')[0];
+
     try {
-      // Fetch boiler log entries
-      const res = await fetch(`${API}/boiler-log/today`, { headers: authHeader });
+      // Fetch yesterday's boiler log entries
+      const res = await fetch(`${API}/boiler-log/date/${dateStr}`, { headers: authHeader });
       const data = await res.json();
       setBoilerEntries(Array.isArray(data) ? data : []);
 
-      // Also fetch today's daily entry summary
-      const res2 = await fetch(`${API}/daily-entry/${today}`, { headers: authHeader });
+      // Fetch yesterday's daily entry summary
+      const res2 = await fetch(`${API}/daily-entry/${dateStr}`, { headers: authHeader });
       if (res2.ok) {
         const d2 = await res2.json();
         setDailyEntry(d2); // we'll add this state

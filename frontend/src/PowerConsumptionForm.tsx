@@ -2,11 +2,16 @@ import React, { useState, useEffect } from 'react';
 
 interface Props { token: string; onBack: () => void; }
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+};
 
 const SECTIONS = [
   { key: 'prep_units', label: 'PREP' },
   { key: 'sep_units', label: 'SEP' },
+  { key: 'solar_units', label: 'Solar' },
   { key: 'doc_units', label: 'DOC' },
   { key: 'silo_units', label: 'SILO' },
   { key: 'dsilo_units', label: 'D-SILO' },
@@ -19,6 +24,7 @@ const SECTIONS = [
   { key: 'ug_tank_units', label: 'UG TANK' },
   { key: 'packing_units', label: 'PACKING' },
   { key: 'acm_units', label: 'ACM SOYA BADI' },
+  { key: 'dg_units', label: 'DG Set' },
 ];
 
 export default function PowerConsumptionForm({ token, onBack }: Props) {
@@ -29,7 +35,7 @@ export default function PowerConsumptionForm({ token, onBack }: Props) {
       msedcl_kvah: '',
       reading_date: today(), power_kvah: '', power_factor: '',
       diesel_opening_stock: '', diesel_received: '', diesel_consumed: '',
-      other_consumed: '', dg_generated_units: '', dg_reason: '',
+      other_consumed: '', dg_generated_units: '', dg_reason: '', dg_units: '',
 
       // Voltages
       voltage_r_morning: '', voltage_y_morning: '', voltage_b_morning: '',

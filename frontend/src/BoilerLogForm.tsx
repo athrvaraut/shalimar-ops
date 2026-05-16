@@ -3,7 +3,11 @@ import React, { useState, useEffect } from 'react';
 const TIME_SLOTS = ['07:00', '09:00', '11:00', '13:00', '15:00', '17:00',
   '19:00', '21:00', '23:00', '01:00', '03:00', '05:00'];
 
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+};
 
 const avg = (arr: (number | null)[]) => {
   const vals = arr.filter(x => x !== null && x !== undefined && !isNaN(x as number)) as number[];
