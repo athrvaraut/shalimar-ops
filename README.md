@@ -1,6 +1,6 @@
 # 🏭 Shalimar Plant Ops
 
-> **Industrial Operations Management System** for Shalimar Nutrients Pvt. Ltd., Sonkhamb, Katol, Nagpur
+> **Industrial Operations Management System**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-shalimar--ops--slxa.vercel.app-blue?style=for-the-badge&logo=vercel)](https://shalimar-ops-slxa.vercel.app)
 [![Backend](https://img.shields.io/badge/API-shalimar--ops.onrender.com-green?style=for-the-badge&logo=fastapi)](https://shalimar-ops.onrender.com/docs)
