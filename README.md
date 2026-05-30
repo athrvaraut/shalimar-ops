@@ -236,12 +236,5 @@ Before this app, operators filled handwritten log books and the HOD manually com
 
 > Built as a real-world production tool, not just a demo — it's live and used daily.
 
----
 
-## 📄 License
-
-This project is private and built for internal use at Shalimar Nutrients Pvt. Ltd.
-
----
-
-*Made with ❤️ by [Atharva Ut](https://github.com/athrvaraut)*
+*Made with by [AR](https://github.com/athrvaraut)*
