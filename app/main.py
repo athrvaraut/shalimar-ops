@@ -804,6 +804,7 @@ def export_power_monthly_excel(
     blue_fill = PatternFill("solid", fgColor="BDD7EE")
     yellow_fill = PatternFill("solid", fgColor="FFFF00")
     light_blue = PatternFill("solid", fgColor="DEEAF1")
+    solar_fill = PatternFill("solid", fgColor="92D050")
 
     month_name = datetime(year, month, 1).strftime("%b").upper()
     num_days = calendar.monthrange(year, month)[1]
@@ -860,73 +861,115 @@ def export_power_monthly_excel(
 
     # Section groups with subtotals
     # Define sections with group markers
+    # (SR, Name, Field, is_subtotal, exclude_from_subtotal)
     SECTION_GROUPS = [
-        # (SR, Name, Field, is_subtotal)
-        ("1", "SEP", "sep_units", False),
-        ("2", "PREP", "prep_units", False),
-        ("", "SOLAR", "solar_units", False),
-        ("3", "SILO", "silo_units", False),
-        ("4", "DOC", "doc_units", False),
-        ("5", "D-SILO", "dsilo_units", False),
-        ("", "SUBTOTAL (1-5)", None, True),   # Subtotal 1
-        ("6", "ACM/ SOYA CHUNKS", "acm_units", False),
-        ("7", "BOILER", "boiler_units", False),
-        ("8", "CHP", "chp_units", False),
-        ("9", "DM PLANT", "dm_units", False), 
-        ("", "UG TANK", "ug_tank_units", False),
-        ("", "SUBTOTAL (6-9)", None, True),   # Subtotal 2
-        ("10", "REFINERY", "refinery_units", False),
-        ("11", "ETP/ACID/MVR", "etp_units", False),
-        ("12", "PACKING", "packing_units", False),
-        ("", "SUBTOTAL (10-12)", None, True), # Subtotal 3
-        ("13", "ADMIN", "admin_units", False),
-        ("15", "MISCELLENIOUS", None, False),
-        ("", "SUBTOTAL (13-15)", None, True), # Subtotal 4
-        ("16", "DG SET UNIT", "dg_units", False),
+        ("1",  "SEP",              "sep_units",      False, False),
+        ("2",  "PREP",             "prep_units",     False, False),
+        ("",   "SOLAR",            "solar_units",    False, True),   # excluded from subtotal 1
+        ("3",  "SILO",             "silo_units",     False, False),
+        ("4",  "DOC",              "doc_units",      False, False),
+        ("5",  "D-SILO",           "dsilo_units",    False, False),
+        ("",   "",                 None,             True,  False),  # Subtotal 1
+        ("6",  "ACM/ SOYA CHUNKS", "acm_units",      False, True),   # excluded from subtotal 2
+        ("7",  "BOILER",           "boiler_units",   False, False),
+        ("8",  "CHP",              "chp_units",      False, False),
+        ("9",  "DM PLANT",         "dm_units",       False, False),
+        ("",   "UG TANK",          "ug_tank_units",  False, False),
+        ("",   "",                 None,             True,  False),  # Subtotal 2
+        ("10", "REFINERY",         "refinery_units", False, False),
+        ("11", "ETP/ACID/MVR",     "etp_units",      False, False),
+        ("12", "PACKING",          "packing_units",  False, False),
+        ("",   "",                 None,             True,  False),  # Subtotal 3
+        ("13", "ADMIN",            "admin_units",    False, False),
+        ("15", "MISCELLENIOUS",    None,             False, False),
+        ("",   "",                 None,             True,  False),  # Subtotal 4
+        ("16", "DG SET UNIT",      "dg_units",       False, False),
     ]
 
-    # Track group subtotal rows for formula ranges
-    group_data_rows = []  # (start_row, end_row) for each group
-    current_group_start = data_rows_start
+    def build_subtotal_formula(col_letter, rows):
+        if not rows: return "0"
+        if len(rows) == 1: return f"={col_letter}{rows[0]}"
+        is_consec = all(rows[j+1] == rows[j]+1 for j in range(len(rows)-1))
+        if is_consec:
+            return f"=SUM({col_letter}{rows[0]}:{col_letter}{rows[-1]})"
+        return "=" + "+".join(f"{col_letter}{r}" for r in rows)
+
+    current_group_included_rows = []
     current_row = data_rows_start
     subtotal_row_nums = []
     solar_row_num = None
+    dg_set_row = None
 
-    for sr, name, field, is_subtotal in SECTION_GROUPS:
-        # ALWAYS set border for Col 1 and 2 first
+    for sr, name, field, is_subtotal, exclude_from_subtotal in SECTION_GROUPS:
         ws.cell(current_row, 1).border = border
         ws.cell(current_row, 2).border = border
-        
+
         if is_subtotal:
-            # STYLE THE SUBTOTAL ROW
-            ws.cell(current_row, 2, name).font = Font(bold=True)
-            ws.cell(current_row, 2).fill = light_blue
-            
+            # Yellow subtotal row — NO text label (matches real excel)
+            ws.cell(current_row, 1).fill = yellow_fill
+            ws.cell(current_row, 2).fill = yellow_fill
+
             for i, rec in enumerate(records):
                 col = i + 3
-                col_letter = openpyxl.utils.get_column_letter(col)
-                # Formula: Sum from current_group_start to row right above this one
-                ws.cell(current_row, col, f"=SUM({openpyxl.utils.get_column_letter(col)}{current_group_start}:{openpyxl.utils.get_column_letter(col)}{current_row-1})")
-                ws.cell(current_row, col).fill = light_blue
-                ws.cell(current_row, col).font = Font(bold=True)
-                ws.cell(current_row, col).border = border
-                ws.cell(current_row, col).alignment = center
-            
-            # Total column for the subtotal row
-            row_start_letter = openpyxl.utils.get_column_letter(3)
-            row_end_letter = openpyxl.utils.get_column_letter(2 + len(records))
-            ws.cell(current_row, total_col, f"=SUM({row_start_letter}{current_row}:{row_end_letter}{current_row})")
-            ws.cell(current_row, total_col).fill = light_blue
+                col_l = openpyxl.utils.get_column_letter(col)
+                formula = build_subtotal_formula(col_l, current_group_included_rows)
+                c = ws.cell(current_row, col, formula)
+                c.fill = yellow_fill
+                c.font = Font(bold=True)
+                c.border = border
+                c.alignment = center
+
+            rs = openpyxl.utils.get_column_letter(3)
+            re = openpyxl.utils.get_column_letter(2 + len(records))
+            ws.cell(current_row, total_col, f"=SUM({rs}{current_row}:{re}{current_row})")
+            ws.cell(current_row, total_col).fill = yellow_fill
             ws.cell(current_row, total_col).font = Font(bold=True)
             ws.cell(current_row, total_col).border = border
-            
-            current_group_start = current_row + 1 # Next group starts after subtotal
-            
-            # 👇 STEP 2a: TRACK SUBTOTAL ROW 👇
+
             subtotal_row_nums.append(current_row)
-            
+            current_group_included_rows = []
             current_row += 1
             continue
+
+        # --- NORMAL SECTION ROW ---
+        ws.cell(current_row, 1, sr).alignment = center
+        ws.cell(current_row, 2, name).font = Font(bold=True) if sr else Font()
+
+        # Track for subtotal (exclude flagged rows like SOLAR, ACM)
+        if not exclude_from_subtotal:
+            current_group_included_rows.append(current_row)
+
+        # SOLAR gets green fill; others get no fill
+        is_solar = (name == 'SOLAR')
+        row_fill = solar_fill if is_solar else None
+
+        for i, rec in enumerate(records):
+            val = rec.get(field, 0) or 0 if field else 0
+            c = ws.cell(current_row, i + 3, val)
+            c.border = border
+            c.alignment = center
+            if row_fill:
+                c.fill = row_fill
+                c.font = Font(bold=True)
+
+        if row_fill:
+            ws.cell(current_row, 1).fill = row_fill
+            ws.cell(current_row, 2).fill = row_fill
+
+        fc = openpyxl.utils.get_column_letter(3)
+        lc = openpyxl.utils.get_column_letter(2 + len(records))
+        ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
+        ws.cell(current_row, total_col).border = border
+        ws.cell(current_row, total_col).alignment = center
+        if row_fill:
+            ws.cell(current_row, total_col).fill = row_fill
+
+        if name == 'SOLAR':
+            solar_row_num = current_row
+        if name == 'DG SET UNIT':
+            dg_set_row = current_row
+
+        current_row += 1
 
         # --- NORMAL SECTION ROW ---
         ws.cell(current_row, 1, sr).alignment = center
@@ -974,13 +1017,13 @@ def export_power_monthly_excel(
                 parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
                 
                 # Add DG SET row explicitly (It is usually 6 rows above the current summary row)
-                dg_row = current_row - 6 
+                dg_row = dg_set_row if dg_set_row else (current_row - 1)
                 val = f'=({parts})+{col_l}{dg_row}'
                 
             elif key == "total_without_solar":
                 col_l = openpyxl.utils.get_column_letter(col)
                 parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
-                dg_row = current_row - 6
+                dg_row = dg_set_row if dg_set_row else (current_row - 1)
                 solar_ref = f'{col_l}{solar_row_num}' if solar_row_num else '0'
                 
                 # Formula: (Subtotals + DG) - Solar
