@@ -971,62 +971,40 @@ def export_power_monthly_excel(
 
         current_row += 1
 
-        # --- NORMAL SECTION ROW ---
-        ws.cell(current_row, 1, sr).alignment = center
-        ws.cell(current_row, 2, name).font = Font(bold=True) if sr else Font()
+    # Summary rows — per-row color matching real excel
+    orange_fill    = PatternFill("solid", fgColor="FFC000")  # Total with solar
+    dark_blue_fill = PatternFill("solid", fgColor="4472C4")  # Total without solar
+    pf_fill        = PatternFill("solid", fgColor="BDD7EE")  # Power factor
 
-        for i, rec in enumerate(records):
-            val = rec.get(field, 0) or 0 if field else 0
-            c = ws.cell(current_row, i + 3, val)
-            c.border = border
-            c.alignment = center
-            
-        # Total column for normal row
-        fc = openpyxl.utils.get_column_letter(3)
-        lc = openpyxl.utils.get_column_letter(2 + len(records))
-        ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
-        ws.cell(current_row, total_col).border = border
-        ws.cell(current_row, total_col).alignment = center
-        
-        # 👇 STEP 2b: TRACK SOLAR ROW 👇
-        if name == 'SOLAR':  # Note: Ensure 'SOLAR' matches your exact section label!
-            solar_row_num = current_row
-            
-        current_row += 1
-
-    # Summary rows — with borders and yellow fill
     summary_rows = [
-        ("TOTAL UNIT WITH SOLAR GEN. UNIT", "total_with_solar"),
-        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar"),
-        ("MSEDCL UNIT (KWH)", "msedcl"),
-        ("POWER (KVAH)", "kvah"),
-        ("POWER FACTOR", "pf"),
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT",     "total_with_solar",    orange_fill,    "000000"),
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT","total_without_solar", dark_blue_fill, "FFFFFF"),
+        ("MSEDCL UNIT (KWH)",                   "msedcl",              None,           "000000"),
+        ("POWER (KVAH)",                         "kvah",                None,           "000000"),
+        ("POWER FACTOR",                         "pf",                  pf_fill,        "000000"),
     ]
 
-    for label, key in summary_rows:
-        ws.cell(current_row, 1).border = border  # Fix border for Col A
+    for label, key, row_fill, txt_color in summary_rows:
+        ws.cell(current_row, 1).border = border
+        if row_fill: ws.cell(current_row, 1).fill = row_fill
+
         c2 = ws.cell(current_row, 2, label)
-        c2.font = Font(bold=True)
+        c2.font = Font(bold=True, color=txt_color)
         c2.border = border
-        
+        if row_fill: c2.fill = row_fill
+
         for i, rec in enumerate(records):
             col = i + 3
             if key == "total_with_solar":
                 col_l = openpyxl.utils.get_column_letter(col)
-                # Join the tracked subtotal rows together (e.g., C10+C15+C20)
                 parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
-                
-                # Add DG SET row explicitly (It is usually 6 rows above the current summary row)
                 dg_row = dg_set_row if dg_set_row else (current_row - 1)
                 val = f'=({parts})+{col_l}{dg_row}'
-                
             elif key == "total_without_solar":
                 col_l = openpyxl.utils.get_column_letter(col)
                 parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
                 dg_row = dg_set_row if dg_set_row else (current_row - 1)
                 solar_ref = f'{col_l}{solar_row_num}' if solar_row_num else '0'
-                
-                # Formula: (Subtotals + DG) - Solar
                 val = f'=({parts}+{col_l}{dg_row})-{solar_ref}'
             elif key == "msedcl":
                 val = rec.get('msedcl_units', 0) or 0
@@ -1038,27 +1016,25 @@ def export_power_monthly_excel(
                 val = round(kwh/kvah, 4) if kvah and kvah > 0 else 0
             else:
                 val = 0
-                
+
             c3 = ws.cell(current_row, col, val)
-            c3.fill = yellow_fill
-            c3.font = Font(bold=True)
+            if row_fill: c3.fill = row_fill
+            c3.font = Font(bold=True, color=txt_color)
             c3.border = border
             c3.alignment = center
-        
-        # Summary Total Column
+
         if key != "pf":
             fc = openpyxl.utils.get_column_letter(3)
             lc = openpyxl.utils.get_column_letter(2 + len(records))
             ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
-            
-        ws.cell(current_row, total_col).fill = yellow_fill
-        ws.cell(current_row, total_col).font = Font(bold=True)
+        if row_fill: ws.cell(current_row, total_col).fill = row_fill
+        ws.cell(current_row, total_col).font = Font(bold=True, color=txt_color)
         ws.cell(current_row, total_col).border = border
         current_row += 1
 
     # Column widths
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 25
+    ws.column_dimensions['B'].width = 32
     for i in range(len(records)):
         col_letter = openpyxl.utils.get_column_letter(i + 3)
         ws.column_dimensions[col_letter].width = 14
@@ -1080,7 +1056,7 @@ def export_power_monthly_excel(
         c = ws.cell(diesel_start, col_idx, h)
         c.font = Font(bold=True)
         # Using a generic hex color in case blue_fill isn't defined here
-        c.fill = PatternFill('solid', fgColor='BDD7EE') 
+        c.fill = PatternFill('solid', fgColor='FFC7CE') 
         c.border = border
         c.alignment = center
     ws.row_dimensions[diesel_start].height = 30
