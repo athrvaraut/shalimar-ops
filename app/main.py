@@ -959,28 +959,29 @@ def export_power_monthly_excel(
         current_row += 1
 
     # Summary rows — per-row color matching real excel
-    orange_fill    = PatternFill("solid", fgColor="FFC000")  # Total with solar
-    dark_blue_fill = PatternFill("solid", fgColor="5B9BD5")  # Softer, lighter Excel blue
-    pf_fill        = PatternFill("solid", fgColor="BDD7EE")  # Power factor
+    orange_fill     = PatternFill("solid", fgColor="FFBF00")  # Rich Yellow-Orange
+    soft_blue_fill  = PatternFill("solid", fgColor="8EA9DB")  # Softer, lighter Excel blue
+    pf_fill         = PatternFill("solid", fgColor="BDD7EE")  # Power factor pale blue
 
+    # Notice the new 5th item in these lists: the exact row height (45 = 3 boxes, 30 = 2 boxes)
     summary_rows = [
-        ("TOTAL UNIT WITH SOLAR GEN. UNIT",     "total_with_solar",    orange_fill,    "000000"),
-        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT","total_without_solar", dark_blue_fill, "FFFFFF"),
-        ("MSEDCL UNIT (KWH)",                   "msedcl",              None,           "000000"),
-        ("POWER (KVAH)",                         "kvah",                None,           "000000"),
-        ("POWER FACTOR",                         "pf",                  pf_fill,        "000000"),
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT",       "total_with_solar",    orange_fill,    "000000", 45),
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar", soft_blue_fill, "000000", 45),
+        ("MSEDCL UNIT (KWH)",                     "msedcl",              None,           "000000", 30),
+        ("POWER (KVAH)",                           "kvah",                None,           "000000", 30),
+        ("POWER FACTOR",                           "pf",                  pf_fill,        "000000", 30),
     ]
 
-    for label, key, row_fill, txt_color in summary_rows:
+    for label, key, row_fill, txt_color, r_height in summary_rows:
         ws.cell(current_row, 1).border = border
         
-        # Increase the row height to make these summary boxes broader and taller
-        ws.row_dimensions[current_row].height = 32 
+        # Apply the specific "boxes of space" (Row Height) you requested
+        ws.row_dimensions[current_row].height = r_height 
 
         c2 = ws.cell(current_row, 2, label)
-        c2.font = Font(bold=True, color="000000") # Always keep label text black
+        c2.font = Font(bold=True, color="000000") # Forcing label text to be completely black
         c2.border = border
-        c2.alignment = center
+        c2.alignment = center # This centers the text horizontally and vertically, wrapping it cleanly
 
         for i, rec in enumerate(records):
             col = i + 3
@@ -1008,7 +1009,7 @@ def export_power_monthly_excel(
 
             c3 = ws.cell(current_row, col, val)
             if row_fill: c3.fill = row_fill # Color only applies to the values
-            c3.font = Font(bold=True, color=txt_color) 
+            c3.font = Font(bold=True, color=txt_color) # Forcing values to be completely black
             c3.border = border
             c3.alignment = center
 
@@ -1024,7 +1025,7 @@ def export_power_monthly_excel(
 
     # Column widths
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 40  # Increased heavily to make labels much wider
+    ws.column_dimensions['B'].width = 28  # Tuned so the text wraps identically to the original
     for i in range(len(records)):
         col_letter = openpyxl.utils.get_column_letter(i + 3)
         ws.column_dimensions[col_letter].width = 14
@@ -1045,8 +1046,8 @@ def export_power_monthly_excel(
     for col_idx, h in enumerate(diesel_headers, 1):
         c = ws.cell(diesel_start, col_idx, h)
         c.font = Font(bold=True)
-        # Very faint pastel pink exactly like the original excel
-        c.fill = PatternFill('solid', fgColor='FADBD8') 
+        # Exact pale peach/pink from the original Excel sheet
+        c.fill = PatternFill('solid', fgColor='FCE4D6') 
         c.border = border
         c.alignment = center
     ws.row_dimensions[diesel_start].height = 30
