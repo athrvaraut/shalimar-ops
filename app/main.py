@@ -905,10 +905,7 @@ def export_power_monthly_excel(
         ws.cell(current_row, 2).border = border
 
         if is_subtotal:
-            # Yellow subtotal row — NO text label (matches real excel)
-            ws.cell(current_row, 1).fill = yellow_fill
-            ws.cell(current_row, 2).fill = yellow_fill
-
+            # Yellow subtotal row — ONLY values get colored now (Labels stay white)
             for i, rec in enumerate(records):
                 col = i + 3
                 col_l = openpyxl.utils.get_column_letter(col)
@@ -952,10 +949,6 @@ def export_power_monthly_excel(
                 c.fill = row_fill
                 c.font = Font(bold=True)
 
-        if row_fill:
-            ws.cell(current_row, 1).fill = row_fill
-            ws.cell(current_row, 2).fill = row_fill
-
         fc = openpyxl.utils.get_column_letter(3)
         lc = openpyxl.utils.get_column_letter(2 + len(records))
         ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
@@ -973,7 +966,7 @@ def export_power_monthly_excel(
 
     # Summary rows — per-row color matching real excel
     orange_fill    = PatternFill("solid", fgColor="FFC000")  # Total with solar
-    dark_blue_fill = PatternFill("solid", fgColor="4472C4")  # Total without solar
+    dark_blue_fill = PatternFill("solid", fgColor="4472C4")  # Total without solar (True Dark Blue)
     pf_fill        = PatternFill("solid", fgColor="BDD7EE")  # Power factor
 
     summary_rows = [
@@ -986,12 +979,12 @@ def export_power_monthly_excel(
 
     for label, key, row_fill, txt_color in summary_rows:
         ws.cell(current_row, 1).border = border
-        if row_fill: ws.cell(current_row, 1).fill = row_fill
+        # NO fill applied here so Column 1 stays white
 
         c2 = ws.cell(current_row, 2, label)
-        c2.font = Font(bold=True, color=txt_color)
+        c2.font = Font(bold=True, color="000000") # Always Force Black text for the labels
         c2.border = border
-        if row_fill: c2.fill = row_fill
+        # NO fill applied here so Column 2 stays white
 
         for i, rec in enumerate(records):
             col = i + 3
@@ -1018,8 +1011,8 @@ def export_power_monthly_excel(
                 val = 0
 
             c3 = ws.cell(current_row, col, val)
-            if row_fill: c3.fill = row_fill
-            c3.font = Font(bold=True, color=txt_color)
+            if row_fill: c3.fill = row_fill # Fill ONLY applies to values
+            c3.font = Font(bold=True, color=txt_color) # Colored text ONLY applies to values
             c3.border = border
             c3.alignment = center
 
@@ -1027,6 +1020,7 @@ def export_power_monthly_excel(
             fc = openpyxl.utils.get_column_letter(3)
             lc = openpyxl.utils.get_column_letter(2 + len(records))
             ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
+            
         if row_fill: ws.cell(current_row, total_col).fill = row_fill
         ws.cell(current_row, total_col).font = Font(bold=True, color=txt_color)
         ws.cell(current_row, total_col).border = border
