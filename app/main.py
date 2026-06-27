@@ -820,39 +820,33 @@ def export_power_monthly_excel(
 
     # ROW 2: DATE header row
     ws.cell(2, 1, "DATE").font = bold
-    ws.cell(2, 1).fill = blue_fill
     ws.cell(2, 1).border = border
     ws.cell(2, 1).alignment = center
-    ws.cell(2, 2).fill = blue_fill
     ws.cell(2, 2).border = border
 
     for i, rec in enumerate(records):
         col = i + 3
-        date_val = rec.get('reading_date')
         date_str = safe_date_str(rec.get('reading_date'))
         c = ws.cell(2, col, date_str)
-        c.font = bold; c.fill = blue_fill; c.border = border; c.alignment = center
+        c.font = bold; c.border = border; c.alignment = center
 
     # TOTAL column
     total_col = len(records) + 3
     ws.cell(2, total_col, "TOTAL").font = bold
-    ws.cell(2, total_col).fill = yellow_fill
     ws.cell(2, total_col).border = border
     ws.cell(2, total_col).alignment = center
 
     # ROW 3: SR.NO. / SECTION NAME / UNIT (KWH) headers
-    ws.cell(3, 1, "SR.NO.").font = bold; ws.cell(3, 1).fill = blue_fill; ws.cell(3, 1).border = border; ws.cell(3, 1).alignment = center
-    ws.cell(3, 2, "SECTION NAME").font = bold; ws.cell(3, 2).fill = blue_fill; ws.cell(3, 2).border = border; ws.cell(3, 2).alignment = center
+    ws.cell(3, 1, "SR.NO.").font = bold; ws.cell(3, 1).border = border; ws.cell(3, 1).alignment = center
+    ws.cell(3, 2, "SECTION NAME").font = bold; ws.cell(3, 2).border = border; ws.cell(3, 2).alignment = center
     
     for i in range(len(records)):
         col = i + 3
         ws.cell(3, col, "UNIT (KWH)").font = bold
-        ws.cell(3, col).fill = blue_fill
         ws.cell(3, col).border = border
         ws.cell(3, col).alignment = center
 
     ws.cell(3, total_col, "TOTAL").font = bold
-    ws.cell(3, total_col).fill = yellow_fill
     ws.cell(3, total_col).border = border
     ws.cell(3, total_col).alignment = center
 
@@ -966,7 +960,7 @@ def export_power_monthly_excel(
 
     # Summary rows — per-row color matching real excel
     orange_fill    = PatternFill("solid", fgColor="FFC000")  # Total with solar
-    dark_blue_fill = PatternFill("solid", fgColor="4472C4")  # Total without solar (True Dark Blue)
+    dark_blue_fill = PatternFill("solid", fgColor="5B9BD5")  # Softer, lighter Excel blue
     pf_fill        = PatternFill("solid", fgColor="BDD7EE")  # Power factor
 
     summary_rows = [
@@ -979,12 +973,14 @@ def export_power_monthly_excel(
 
     for label, key, row_fill, txt_color in summary_rows:
         ws.cell(current_row, 1).border = border
-        # NO fill applied here so Column 1 stays white
+        
+        # Increase the row height to make these summary boxes broader and taller
+        ws.row_dimensions[current_row].height = 32 
 
         c2 = ws.cell(current_row, 2, label)
-        c2.font = Font(bold=True, color="000000") # Always Force Black text for the labels
+        c2.font = Font(bold=True, color="000000") # Always keep label text black
         c2.border = border
-        # NO fill applied here so Column 2 stays white
+        c2.alignment = center
 
         for i, rec in enumerate(records):
             col = i + 3
@@ -1011,8 +1007,8 @@ def export_power_monthly_excel(
                 val = 0
 
             c3 = ws.cell(current_row, col, val)
-            if row_fill: c3.fill = row_fill # Fill ONLY applies to values
-            c3.font = Font(bold=True, color=txt_color) # Colored text ONLY applies to values
+            if row_fill: c3.fill = row_fill # Color only applies to the values
+            c3.font = Font(bold=True, color=txt_color) 
             c3.border = border
             c3.alignment = center
 
@@ -1028,13 +1024,13 @@ def export_power_monthly_excel(
 
     # Column widths
     ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 32
+    ws.column_dimensions['B'].width = 40  # Increased heavily to make labels much wider
     for i in range(len(records)):
         col_letter = openpyxl.utils.get_column_letter(i + 3)
         ws.column_dimensions[col_letter].width = 14
     ws.column_dimensions[openpyxl.utils.get_column_letter(total_col)].width = 14
 
-    # Row heights
+    # Row heights for the top headers
     ws.row_dimensions[1].height = 25
     ws.row_dimensions[2].height = 20
     ws.row_dimensions[3].height = 30
@@ -1049,8 +1045,8 @@ def export_power_monthly_excel(
     for col_idx, h in enumerate(diesel_headers, 1):
         c = ws.cell(diesel_start, col_idx, h)
         c.font = Font(bold=True)
-        # Using a generic hex color in case blue_fill isn't defined here
-        c.fill = PatternFill('solid', fgColor='FFC7CE') 
+        # Very faint pastel pink exactly like the original excel
+        c.fill = PatternFill('solid', fgColor='FADBD8') 
         c.border = border
         c.alignment = center
     ws.row_dimensions[diesel_start].height = 30
