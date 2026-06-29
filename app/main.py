@@ -893,6 +893,7 @@ def export_power_monthly_excel(
     subtotal_row_nums = []
     solar_row_num = None
     dg_set_row = None
+    acm_row = None
 
     for sr, name, field, is_subtotal, exclude_from_subtotal in SECTION_GROUPS:
         ws.cell(current_row, 1).border = border
@@ -955,6 +956,8 @@ def export_power_monthly_excel(
             solar_row_num = current_row
         if name == 'DG SET UNIT':
             dg_set_row = current_row
+        if name == 'ACM/ SOYA CHUNKS':
+            acm_row = current_row
 
         current_row += 1
 
@@ -963,69 +966,92 @@ def export_power_monthly_excel(
     soft_blue_fill  = PatternFill("solid", fgColor="8EA9DB")  # Softer, lighter Excel blue
     pf_fill         = PatternFill("solid", fgColor="BDD7EE")  # Power factor pale blue
 
-    # 👇 Reduced 45 to 38 for a slightly tighter, perfect fit
-    # 👇 Drastically reduced heights to remove all the extra vertical padding
+    # 👇 Swapped the fill variables for 'total_without_solar' and 'pf'
     summary_rows = [
-        ("TOTAL UNIT WITH SOLAR GEN. UNIT",       "total_with_solar",    orange_fill,    "000000", 30), # Snug 2-line fit
-        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar", soft_blue_fill, "000000", 30), # Snug 2-line fit
-        ("MSEDCL UNIT (KWH)",                     "msedcl",              None,           "000000", 22), # Tight 1-line fit
-        ("POWER (KVAH)",                           "kvah",                None,           "000000", 22), # Tight 1-line fit
-        ("POWER FACTOR",                           "pf",                  pf_fill,        "000000", 22), # Tight 1-line fit
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT",       "total_with_solar",    orange_fill,    "000000", 32), 
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar", pf_fill,        "000000", 32), # 👈 Now uses the pale blue
+        ("MSEDCL UNIT (KWH)",                     "msedcl",              None,           "000000", 22), 
+        ("POWER (KVAH)",                           "kvah",                None,           "000000", 22), 
+        ("POWER FACTOR",                           "pf",                  soft_blue_fill, "000000", 22), # 👈 Now uses the darker blue
     ]
 
+    total_with_solar_row = None
+    msedcl_written_row   = None
+    kvah_written_row     = None
+
     for label, key, row_fill, txt_color, r_height in summary_rows:
+        # Capture row number BEFORE writing — for cross-row formula references
+        if key == "total_with_solar":   total_with_solar_row = current_row
+        elif key == "msedcl":           msedcl_written_row   = current_row
+        elif key == "kvah":             kvah_written_row     = current_row
+
         ws.cell(current_row, 1).border = border
-        
-        # Apply the newly tuned row height
-        ws.row_dimensions[current_row].height = r_height 
+        ws.row_dimensions[current_row].height = r_height
 
         c2 = ws.cell(current_row, 2, label)
-        c2.font = Font(bold=True, color="000000") 
+        c2.font = Font(bold=True, color="000000")
         c2.border = border
-        c2.alignment = center 
+        c2.alignment = center
 
         for i, rec in enumerate(records):
-            col = i + 3
+            col  = i + 3
+            col_l = openpyxl.utils.get_column_letter(col)
+
             if key == "total_with_solar":
-                col_l = openpyxl.utils.get_column_letter(col)
-                parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
-                dg_row = dg_set_row if dg_set_row else (current_row - 1)
-                val = f'=({parts})+{col_l}{dg_row}'
+                # ✅ Real formula: subtotals + ACM  (DG excluded)
+                parts   = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
+                acm_ref = f'+{col_l}{acm_row}' if acm_row else ''
+                val = f'={parts}{acm_ref}'
+
             elif key == "total_without_solar":
-                col_l = openpyxl.utils.get_column_letter(col)
-                parts = '+'.join([f'{col_l}{r}' for r in subtotal_row_nums]) if subtotal_row_nums else '0'
-                dg_row = dg_set_row if dg_set_row else (current_row - 1)
-                solar_ref = f'{col_l}{solar_row_num}' if solar_row_num else '0'
-                val = f'=({parts}+{col_l}{dg_row})-{solar_ref}'
+                # ✅ Real formula: =total_with_solar_row - solar_row
+                tws_ref = f'{col_l}{total_with_solar_row}' if total_with_solar_row else '0'
+                sol_ref = f'{col_l}{solar_row_num}'         if solar_row_num        else '0'
+                val = f'={tws_ref}-{sol_ref}'
+
             elif key == "msedcl":
                 val = rec.get('msedcl_units', 0) or 0
+
             elif key == "kvah":
                 val = rec.get('power_kvah', 0) or 0
+
             elif key == "pf":
-                kwh = rec.get('msedcl_units', 0) or 0
-                kvah = rec.get('power_kvah', 0) or 0
-                val = round(kwh/kvah, 4) if kvah and kvah > 0 else 0
+                # ✅ Real formula: =msedcl_row / kvah_row
+                m_ref = f'{col_l}{msedcl_written_row}' if msedcl_written_row else '0'
+                k_ref = f'{col_l}{kvah_written_row}'   if kvah_written_row   else '0'
+                val = f'=IF({k_ref}>0,{m_ref}/{k_ref},"")'
             else:
                 val = 0
 
             c3 = ws.cell(current_row, col, val)
-            if row_fill: c3.fill = row_fill 
-            c3.font = Font(bold=True, color=txt_color) 
-            c3.border = border
+            if row_fill: c3.fill = row_fill
+            c3.font      = Font(bold=True, color=txt_color)
+            c3.border    = border
             c3.alignment = center
 
-        if key != "pf":
-            fc = openpyxl.utils.get_column_letter(3)
-            lc = openpyxl.utils.get_column_letter(2 + len(records))
+        # ── TOTAL column ──────────────────────────────────────────────────
+        tc_l  = openpyxl.utils.get_column_letter(total_col)
+        fc    = openpyxl.utils.get_column_letter(3)
+        lc    = openpyxl.utils.get_column_letter(2 + len(records))
+
+        if key == "pf":
+            m_tot = f'{tc_l}{msedcl_written_row}' if msedcl_written_row else '0'
+            k_tot = f'{tc_l}{kvah_written_row}'   if kvah_written_row   else '0'
+            ws.cell(current_row, total_col, f'=IF({k_tot}>0,{m_tot}/{k_tot},"")')
+
+        elif key == "total_without_solar":
+            tws_tot = f'{tc_l}{total_with_solar_row}' if total_with_solar_row else '0'
+            sol_tot = f'{tc_l}{solar_row_num}'         if solar_row_num        else '0'
+            ws.cell(current_row, total_col, f'={tws_tot}-{sol_tot}')
+
+        else:
             ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
-            
+
         if row_fill: ws.cell(current_row, total_col).fill = row_fill
-        ws.cell(current_row, total_col).font = Font(bold=True, color=txt_color)
-        ws.cell(current_row, total_col).border = border
-        
-        # 👇 ADDED THIS LINE: Forces the Total calculation to sit dead-center in the box
-        ws.cell(current_row, total_col).alignment = center 
-        
+        ws.cell(current_row, total_col).font      = Font(bold=True, color=txt_color)
+        ws.cell(current_row, total_col).border    = border
+        ws.cell(current_row, total_col).alignment = center
+
         current_row += 1
 
     # Column widths
