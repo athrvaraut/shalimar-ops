@@ -964,12 +964,13 @@ def export_power_monthly_excel(
     pf_fill         = PatternFill("solid", fgColor="BDD7EE")  # Power factor pale blue
 
     # 👇 Reduced 45 to 38 for a slightly tighter, perfect fit
+    # 👇 Drastically reduced heights to remove all the extra vertical padding
     summary_rows = [
-        ("TOTAL UNIT WITH SOLAR GEN. UNIT",       "total_with_solar",    orange_fill,    "000000", 38),
-        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar", soft_blue_fill, "000000", 38),
-        ("MSEDCL UNIT (KWH)",                     "msedcl",              None,           "000000", 30),
-        ("POWER (KVAH)",                           "kvah",                None,           "000000", 30),
-        ("POWER FACTOR",                           "pf",                  pf_fill,        "000000", 30),
+        ("TOTAL UNIT WITH SOLAR GEN. UNIT",       "total_with_solar",    orange_fill,    "000000", 32), # Snug 2-line fit
+        ("TOTAL SECTION UNIT WITHOUT SOLAR UNIT", "total_without_solar", soft_blue_fill, "000000", 32), # Snug 2-line fit
+        ("MSEDCL UNIT (KWH)",                     "msedcl",              None,           "000000", 22), # Tight 1-line fit
+        ("POWER (KVAH)",                           "kvah",                None,           "000000", 22), # Tight 1-line fit
+        ("POWER FACTOR",                           "pf",                  pf_fill,        "000000", 22), # Tight 1-line fit
     ]
 
     for label, key, row_fill, txt_color, r_height in summary_rows:
