@@ -931,9 +931,13 @@ def export_power_monthly_excel(
         if not exclude_from_subtotal:
             current_group_included_rows.append(current_row)
 
-        # SOLAR gets green fill; others get no fill
-        is_solar = (name == 'SOLAR')
-        row_fill = solar_fill if is_solar else None
+        # 👇 Assign specific colors to Solar and ACM rows
+        if name == 'SOLAR':
+            row_fill = solar_fill
+        elif name == 'ACM/ SOYA CHUNKS':
+            row_fill = yellow_fill
+        else:
+            row_fill = None
 
         for i, rec in enumerate(records):
             val = rec.get(field, 0) or 0 if field else 0
@@ -1091,7 +1095,10 @@ def export_power_monthly_excel(
         d_recv = rec.get('diesel_received') or 0
         d_cons = rec.get('diesel_consumed') or 0
         d_other = 0  # other_consumption not stored yet
-        d_gen = rec.get('dg_generated_units') or 0
+        
+        # 👇 Look at BOTH fields so the top grid value perfectly mirrors to the pink table
+        d_gen = rec.get('dg_units') or rec.get('dg_generated_units') or 0
+        
         d_reason = rec.get('dg_reason') or ''
         d_close = d_open + d_recv - d_cons - d_other
         
