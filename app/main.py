@@ -542,11 +542,12 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         thin   = Side(style="thin")
         bdr    = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        def C(r, c, val=None, fnt=None, aln=None, b=None):
+        def C(r, c, val=None, fnt=None, aln=None, b=None, nf=None):
             cell = ws.cell(row=r, column=c, value=val)
             cell.font      = fnt if fnt else Font()
             cell.alignment = aln if aln else center
             cell.border    = b   if b   else Border()
+            if nf: cell.number_format = nf
             return cell
 
         try:
@@ -592,25 +593,25 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
 
         # ── ROW 8: Coal data ──────────────────────────────────────────────
         # B8 Opening (raw)
-        C(8, 2, opening_stock, b=bdr)
+        C(8, 2, opening_stock, b=bdr, nf='0.000')
         # C8 Arrival Indian (raw)
-        C(8, 3, arrival_ind, b=bdr)
+        C(8, 3, arrival_ind, b=bdr, nf='0.000')
         # D8 Arrival Imported (raw)
-        C(8, 4, arrival_imp or 0, b=bdr)
+        C(8, 4, arrival_imp or 0, b=bdr, nf='0.000')
         # E8 Coal SEP = E16(SEP consumed) / (I19(C/S ratio) * 1000)
         c = ws.cell(8, 5, '=IF(AND(I19>0,E16>0),E16/(I19*1000),"")')
-        c.alignment = center; c.border = bdr
+        c.alignment = center; c.border = bdr; c.number_format = '0.000'
         # F8 Coal REFL = I12(Coal For Steam KG)/1000 - E8
         c = ws.cell(8, 6, '=IF(AND(I12>0,E8<>""),I12/1000-E8,"")')
-        c.alignment = center; c.border = bdr
+        c.alignment = center; c.border = bdr; c.number_format = '0.000'
         # G8 Thermic (raw)
-        C(8, 7, coal_thermic or 0, b=bdr)
+        C(8, 7, coal_thermic or 0, b=bdr, nf='0.000')
         # H8 Total Coal = E8+F8+G8
         c = ws.cell(8, 8, '=E8+IF(F8="",0,F8)+IF(G8="",0,G8)')
-        c.font = bold; c.alignment = center; c.border = bdr
+        c.font = bold; c.alignment = center; c.border = bdr; c.number_format = '0.000'
         # I8 Closing = B8+C8+D8-H8
         c = ws.cell(8, 9, '=B8+C8+D8-H8')
-        c.alignment = center; c.border = bdr
+        c.alignment = center; c.border = bdr; c.number_format = '0.000'
         # J8 Remarks
         C(8, 10, remarks_text, b=bdr)
 
@@ -700,7 +701,7 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         # I19: C/S Ratio = G19/I12
         c = ws.cell(19, 9, '=IF(I12>0,G19/I12,"")')
         c.font = bold; c.alignment = center; c.border = bdr
-        c.number_format = '0.000'
+        c.number_format = '0.00'
 
         # Column widths — match real excel proportions
         widths = {'A':3,'B':24,'C':18,'D':18,'E':20,'F':20,'G':20,'H':14,'I':18,'J':14}
@@ -1032,6 +1033,8 @@ def export_power_monthly_excel(
             c3.font      = Font(bold=True, color=txt_color)
             c3.border    = border
             c3.alignment = center
+            if key == "pf":
+                c3.number_format = '0.000'
 
         # ── TOTAL column ──────────────────────────────────────────────────
         tc_l  = openpyxl.utils.get_column_letter(total_col)
@@ -1042,6 +1045,7 @@ def export_power_monthly_excel(
             m_tot = f'{tc_l}{msedcl_written_row}' if msedcl_written_row else '0'
             k_tot = f'{tc_l}{kvah_written_row}'   if kvah_written_row   else '0'
             ws.cell(current_row, total_col, f'=IF({k_tot}>0,{m_tot}/{k_tot},"")')
+            ws.cell(current_row, total_col).number_format = '0.000'
 
         elif key == "total_without_solar":
             tws_tot = f'{tc_l}{total_with_solar_row}' if total_with_solar_row else '0'
@@ -1216,12 +1220,14 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         ws['A1'] = 'SHALIMAR NUTRIENTS PRIVATE LIMITED'
         ws['A1'].font = Font(bold=True, size=14, name='Calibri')
         ws['A1'].alignment = center
+        for col in range(1, NUM_COLS+1): ws.cell(1, col).border = border
 
         # Row 2: Section
         ws.merge_cells(f'A2:{last_col}2')
         ws['A2'] = 'BOILER SECTION'
         ws['A2'].font = Font(bold=True, size=12, name='Calibri')
         ws['A2'].alignment = center
+        for col in range(1, NUM_COLS+1): ws.cell(2, col).border = border
 
         # Row 3: empty
 
@@ -1230,6 +1236,7 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         ws['A4'] = f'COAL COSUMPTION AND STOCK SHEET {month_name}. -{year}'
         ws['A4'].font = Font(bold=True, size=11, name='Calibri')
         ws['A4'].alignment = center
+        for col in range(1, NUM_COLS+1): ws.cell(4, col).border = border
 
         # Row 5: empty
 
@@ -1253,7 +1260,6 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         for col_idx, h in enumerate(headers, 1):
             c = ws.cell(6, col_idx, h)
             c.font = bold
-            c.fill = blue_fill
             c.border = border
             c.alignment = center
         ws.row_dimensions[6].height = 50
