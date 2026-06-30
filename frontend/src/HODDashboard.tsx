@@ -119,8 +119,12 @@ export default function HODDashboard({ token, onBack }: {
   const fetchPower = async () => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${API}/power-consumption/date/${today}`, { headers: authHeader });
+      // 👇 Calculate exactly 24 hours ago to match the Boiler tab 👇
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = yesterday.toISOString().split('T')[0];
+      
+      const res = await fetch(`${API}/power-consumption/date/${dateStr}`, { headers: authHeader });
       if (res.ok) {
         const data = await res.json();
         setPowerReports(data ? [data] : []);
