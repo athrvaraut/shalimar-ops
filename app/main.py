@@ -492,9 +492,9 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             sep_close = row.get('steam_sep_closing') or 0
             refl_open  = row.get('steam_refl_opening') or 0
             refl_close = row.get('steam_refl_closing') or 0
-            fw_vals = [x for x in row.get('feed_water_temps', []) if x is not None and x != '']
+            fw_vals = [float(x) for x in row.get('feed_water_temps', []) if x not in (None, '')]
             avg_fw = round(sum(fw_vals)/len(fw_vals), 1) if fw_vals else None
-            fd1_vals = [x for x in row.get('fd_fan1_dampers', []) if x is not None and x != '']
+            fd1_vals = [float(x) for x in row.get('fd_fan1_dampers', []) if x not in (None, '')]
             avg_feeding = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
         else:
             coal_r = db.execute(text(
@@ -1178,11 +1178,11 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
             
-            # Use stored avg_fd1 as avg_feeding if no log entries
-            if not row.get('avg_fd1'):
+            # Use stored avg_fd_fan1 as avg_feeding if no log entries
+            if not row.get('avg_fd_fan1'):
                 fd1 = row.get('fd_fan1_dampers', [])
-                fd1_vals = [x for x in fd1 if x is not None]
-                row['avg_fd1'] = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
+                fd1_vals = [float(x) for x in fd1 if x not in (None, '')]
+                row['avg_fd_fan1'] = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
             
             records.append(row)
 
@@ -1287,7 +1287,7 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             # Use stored steam values from daily_entries if available
             steam_sep_consumed = sf(rec.get('steam_sep_consumed'))
             steam_refl_consumed = sf(rec.get('steam_refl_consumed'))
-            avg_fd1 = sf(rec.get('avg_fd1'))
+            avg_fd1 = sf(rec.get('avg_fd_fan1'))
             cs_ratio_stored = sf(rec.get('cs_ratio'))
             
             # Calculate from stored values
@@ -1577,9 +1577,9 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     fw_temps = data.get('feed_water_temps', [])
     fd1 = data.get('fd_fan1_dampers', [])
     fd2 = data.get('fd_fan2_dampers', [])
-    fw_vals = [x for x in fw_temps if x is not None and x != '']
-    fd1_vals = [x for x in fd1 if x is not None and x != '']
-    fd2_vals = [x for x in fd2 if x is not None and x != '']
+    fw_vals = [float(x) for x in fw_temps if x not in (None, '')]
+    fd1_vals = [float(x) for x in fd1 if x not in (None, '')]
+    fd2_vals = [float(x) for x in fd2 if x not in (None, '')]
     avg_fw = round(sum(fw_vals)/len(fw_vals), 2) if fw_vals else None
     avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
     avg_fd2 = round(sum(fd2_vals)/len(fd2_vals), 2) if fd2_vals else None
