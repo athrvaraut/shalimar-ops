@@ -211,7 +211,7 @@ export default function HODDashboard({ token, onBack }: {
               }}
               style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
-              📥 Yesterday's Boiler Excel
+              📥 Today's Boiler Excel
             </button>
           )}
           {tab === 'power' && (

@@ -685,9 +685,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(16, 2, sf(sep_open),  b=bdr)
         C(16, 3, sf(sep_close), b=bdr)
         C(16, 4, None, b=bdr)
-        # E16: SEP consumed = C16-B16
-        c = ws.cell(16, 5, '=C16-B16')
+        # E16: SEP consumed = safe formula with yellow background
+        c = ws.cell(16, 5, '=IF(AND(B16>0,C16>0),C16-B16,0)')
         c.font = bold; c.alignment = center; c.border = bdr
+        from openpyxl.styles import PatternFill
+        c.fill = PatternFill("solid", fgColor="FFFF00")
         C(16, 6, None, b=bdr)
         C(16, 7, avg_fw, b=bdr)       # Feed water avg
         C(16, 8, None, b=bdr)
@@ -707,13 +709,15 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(19, 2, sf(refl_open),  b=bdr)
         C(19, 3, sf(refl_close), b=bdr)
         C(19, 4, None, b=bdr)
-        # E19: REFL consumed = C19-B19
-        c = ws.cell(19, 5, '=C19-B19')
+        # E19: REFL consumed = safe formula with yellow background
+        c = ws.cell(19, 5, '=IF(AND(B19>0,C19>0),C19-B19,0)')
         c.font = bold; c.alignment = center; c.border = bdr
+        c.fill = PatternFill("solid", fgColor="FFFF00")
         C(19, 6, None, b=bdr)
-        # G19: Total Steam = E16+E19
+        # G19: Total Steam = formula with yellow background
         c = ws.cell(19, 7, '=E16+E19')
         c.font = bold; c.alignment = center; c.border = bdr
+        c.fill = PatternFill("solid", fgColor="FFFF00")
         C(19, 8, None, b=bdr)
         # I19: C/S Ratio = G19/I12
         c = ws.cell(19, 9, '=IF(I12>0,G19/I12,"")')
@@ -1169,47 +1173,24 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
 
         prefix = f"{year}-{str(month).zfill(2)}%"
 
-        # Read from daily_entries (new system) first, fallback to daily_coal_steam
-        import json
-        entry_results = db.execute(text(
-            "SELECT * FROM daily_entries WHERE entry_date::text LIKE :prefix ORDER BY entry_date ASC"
-        ), {"prefix": prefix}).mappings().all()
-        entry_records = [dict(r) for r in entry_results]
-
-        # Also get old records
-        old_results = db.execute(text(
-            "SELECT * FROM daily_coal_steam WHERE report_date::text LIKE :prefix ORDER BY report_date ASC"
-        ), {"prefix": prefix}).mappings().all()
-        old_records = {str(dict(r)['report_date'])[:10]: dict(r) for r in old_results}
-
-        # Merge — daily_entries takes priority
-        records = []
-        for er in entry_records:
-            row = dict(er)
-            date_key = str(row.get('entry_date'))[:10]
-            row['report_date'] = row.get('entry_date')
-            
-            # Parse JSON arrays for avg values
-            for field in ['feed_water_temps', 'fd_fan1_dampers', 'fd_fan2_dampers']:
-                if row.get(field):
-                    try: row[field] = json.loads(row[field])
-                    except: row[field] = []
-                else:
-                    row[field] = [] # <--- CRITICAL FIX
-            
-            # Use stored avg_fd_fan1 as avg_feeding if no log entries
-            if not row.get('avg_fd_fan1'):
-                fd1 = row.get('fd_fan1_dampers', [])
-                fd1_vals = [float(x) for x in fd1 if x not in (None, '')]
-                row['avg_fd_fan1'] = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
-            
-            records.append(row)
-
-        # If no daily_entries, fall back to old records
+        # Check daily_entries first (new system)
+        import json as json_lib
+        entry_res = db.execute(text(
+            "SELECT *, entry_date as report_date FROM daily_entries "
+            "WHERE entry_date::text LIKE :p ORDER BY entry_date ASC"
+        ), {"p": prefix}).mappings().all()
+        records = [dict(r) for r in entry_res]
+        
+        # If nothing in daily_entries, fallback to daily_coal_steam
         if not records:
-            records = [dict(r) for r in old_results]
-            for r in records:
-                r['report_date'] = r.get('report_date')
+            old_res = db.execute(text(
+                "SELECT * FROM daily_coal_steam WHERE report_date::text LIKE :p "
+                "ORDER BY report_date ASC"
+            ), {"p": prefix}).mappings().all()
+            records = [dict(r) for r in old_res]
+            
+        if not records:
+            raise HTTPException(status_code=404, detail="No data for this month")
 
         def sf(val, default=None):
             if val is None: return default
@@ -1294,44 +1275,27 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
         for i, rec in enumerate(records):
             r = DATA_START + i
 
-            # 👇 1. SMART DATA FETCH (Using pre-calculated daily entries) 👇
-            current_date = str(rec.get('report_date') or rec.get('entry_date'))[:10]
-            
-            # 👇 DEFINITIONS MOVED HERE 👇
-            arrival = (sf(rec.get('coal_arrival_indian'), 0) + sf(rec.get('coal_arrival_imported'), 0))
-            thermic = sf(rec.get('coal_thermic'))
+            # Use stored computed values from daily_entries
+            steam_sep = sf(rec.get('steam_sep_consumed'))
+            steam_ref = sf(rec.get('steam_refl_consumed'))
+            avg_fd1_val = sf(rec.get('avg_fd1'))
+            cs_stored = sf(rec.get('cs_ratio'))
+
+            coal_for_steam = round(avg_fd1_val * 60 * 24) if avg_fd1_val else None
+            total_steam = (steam_sep + steam_ref) if (steam_sep and steam_ref) else None
+
+            # Coal SEP from stored value or calculate
+            sep = sf(rec.get('coal_consumed_sep'))
+            if not sep and steam_sep and cs_stored and cs_stored > 0:
+                sep = round(steam_sep / (cs_stored * 1000), 3)
+
+            ref_ = sf(rec.get('coal_consumed_refinery'))
+            if not ref_ and coal_for_steam and sep:
+                ref_ = round(coal_for_steam / 1000 - sep, 3)
+
+            arrival = sf(rec.get('coal_arrival_indian'), 0)
+            thermic = sf(rec.get('coal_thermic'), 0)
             opening = sf(rec.get('opening_coal_stock'))
-            # 👆 ---------------------- 👆
-            
-            # Use stored steam values from daily_entries if available
-            steam_sep_consumed = sf(rec.get('steam_sep_consumed'))
-            steam_refl_consumed = sf(rec.get('steam_refl_consumed'))
-            avg_fd1 = sf(rec.get('avg_fd_fan1')) # <--- Fix column name mapping
-            cs_ratio_stored = sf(rec.get('cs_ratio'))
-            
-            # Calculate from stored values
-            steam_sep = steam_sep_consumed
-            steam_ref = steam_refl_consumed
-            total_steam = (steam_sep + steam_ref) if (steam_sep is not None and steam_ref is not None) else None
-            avg_feeding = avg_fd1
-            coal_for_steam = round(avg_feeding * 60 * 24) if avg_feeding else None
-            actual_cs_ratio = cs_ratio_stored or 0
-            
-            # If cs_ratio not stored, calculate it
-            if not actual_cs_ratio and total_steam and coal_for_steam and coal_for_steam > 0:
-                actual_cs_ratio = round(total_steam / coal_for_steam, 3)
-            
-            # Coal SEP and REFL from formula
-            if steam_sep and actual_cs_ratio > 0:
-                sep = round(steam_sep / (actual_cs_ratio * 1000), 3)
-            else:
-                sep = sf(rec.get('coal_consumed_sep'))
-            
-            coal_for_steam_mt = round(coal_for_steam / 1000, 3) if coal_for_steam else None
-            if coal_for_steam_mt and sep:
-                ref_ = round(coal_for_steam_mt - sep, 3)
-            else:
-                ref_ = sf(rec.get('coal_consumed_refinery'))
 
             # 👇 PYTHON MATH (Replaces Excel string formulas) 👇
             f_val = round((sep or 0) + (ref_ or 0), 3)
