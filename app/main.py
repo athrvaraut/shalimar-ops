@@ -481,6 +481,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             "SELECT * FROM daily_entries WHERE entry_date::text = :date LIMIT 1"
         ), {"date": date}).mappings().fetchone()
 
+       # 👇 Define safety function to stop NULL crashes
+        def _sf(v):
+            try: return float(v) if v not in (None, '') else 0
+            except: return 0
+
         row = None
         if entry_result:
             row = dict(entry_result)
@@ -488,10 +493,19 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
                 if row.get(field):
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
-            sep_open  = row.get('steam_sep_opening') or 0
-            sep_close = row.get('steam_sep_closing') or 0
-            refl_open  = row.get('steam_refl_opening') or 0
-            refl_close = row.get('steam_refl_closing') or 0
+                else:
+                    row[field] = [] # <--- CRITICAL FIX: Stops array crashes!
+
+            # Handle null operator_name for early morning rows
+            if not row.get('operator_name'):
+                row['operator_name'] = 'N/A'
+
+            # Safely fetch steam values for NEW table
+            sep_open   = _sf(row.get('steam_sep_opening'))
+            sep_close  = _sf(row.get('steam_sep_closing'))
+            refl_open  = _sf(row.get('steam_refl_opening'))
+            refl_close = _sf(row.get('steam_refl_closing'))
+
             fw_vals = [float(x) for x in row.get('feed_water_temps', []) if x not in (None, '')]
             avg_fw = round(sum(fw_vals)/len(fw_vals), 1) if fw_vals else None
             fd1_vals = [float(x) for x in row.get('fd_fan1_dampers', []) if x not in (None, '')]
@@ -501,10 +515,13 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
                 "SELECT * FROM daily_coal_steam WHERE report_date::text = :date LIMIT 1"
             ), {"date": date}).mappings().fetchone()
             row = dict(coal_r) if coal_r else {}
-            sep_open  = row.get('steam_sep_opening') or 0
-            sep_close = row.get('steam_sep_closing') or 0
-            refl_open  = row.get('steam_refl_opening') or 0
-            refl_close = row.get('steam_refl_closing') or 0
+            
+            # Safely fetch steam values for OLD table
+            sep_open   = _sf(row.get('steam_sep_opening'))
+            sep_close  = _sf(row.get('steam_sep_closing'))
+            refl_open  = _sf(row.get('steam_refl_opening'))
+            refl_close = _sf(row.get('steam_refl_closing'))
+            
             avg_fw = row.get('avg_feed_water') or row.get('feed_water_temp')
             avg_feeding = None
 
@@ -1177,6 +1194,8 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
                 if row.get(field):
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
+                else:
+                    row[field] = [] # <--- CRITICAL FIX
             
             # Use stored avg_fd_fan1 as avg_feeding if no log entries
             if not row.get('avg_fd_fan1'):
@@ -1287,7 +1306,7 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             # Use stored steam values from daily_entries if available
             steam_sep_consumed = sf(rec.get('steam_sep_consumed'))
             steam_refl_consumed = sf(rec.get('steam_refl_consumed'))
-            avg_fd1 = sf(rec.get('avg_fd_fan1'))
+            avg_fd1 = sf(rec.get('avg_fd_fan1')) # <--- Fix column name mapping
             cs_ratio_stored = sf(rec.get('cs_ratio'))
             
             # Calculate from stored values

@@ -201,10 +201,17 @@ export default function HODDashboard({ token, onBack }: {
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           {tab === 'boiler' && (
             <button
-              onClick={() => downloadBoilerDailyExcel(new Date().toISOString().split('T')[0])}
+              onClick={() => {
+                const d = new Date(); 
+                d.setDate(d.getDate() - 1); 
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                downloadBoilerDailyExcel(`${year}-${month}-${day}`);
+              }}
               style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
-              📥 Today's Boiler Excel
+              📥 Yesterday's Boiler Excel
             </button>
           )}
           {tab === 'power' && (
