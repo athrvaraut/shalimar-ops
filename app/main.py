@@ -488,8 +488,6 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
                 if row.get(field):
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
-                else:
-                    row[field] = [] # <--- CRITICAL FIX: Stops the crash when operator hasn't submitted yet!
             sep_open  = row.get('steam_sep_opening') or 0
             sep_close = row.get('steam_sep_closing') or 0
             refl_open  = row.get('steam_refl_opening') or 0
@@ -1179,8 +1177,6 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
                 if row.get(field):
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
-                else:
-                    row[field] = [] # <--- CRITICAL FIX
             
             # Use stored avg_fd_fan1 as avg_feeding if no log entries
             if not row.get('avg_fd_fan1'):
@@ -1291,7 +1287,7 @@ def export_monthly_coal_excel(year: int, month: int, db: Session = Depends(get_d
             # Use stored steam values from daily_entries if available
             steam_sep_consumed = sf(rec.get('steam_sep_consumed'))
             steam_refl_consumed = sf(rec.get('steam_refl_consumed'))
-            avg_fd1 = sf(rec.get('avg_fd_fan1')) # <--- Fix column name mapping
+            avg_fd1 = sf(rec.get('avg_fd_fan1'))
             cs_ratio_stored = sf(rec.get('cs_ratio'))
             
             # Calculate from stored values
