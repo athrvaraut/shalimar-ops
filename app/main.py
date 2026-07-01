@@ -799,6 +799,7 @@ def export_power_monthly_excel(
     ws.title = "Sheet1"
 
     bold = Font(bold=True)
+    total_font = Font(bold=True, size=12)  # <--- ADDED THIS FOR BIGGER TOTALS
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     thin = Side(style="thin")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -916,8 +917,9 @@ def export_power_monthly_excel(
             re = openpyxl.utils.get_column_letter(2 + len(records))
             ws.cell(current_row, total_col, f"=SUM({rs}{current_row}:{re}{current_row})")
             ws.cell(current_row, total_col).fill = yellow_fill
-            ws.cell(current_row, total_col).font = Font(bold=True)
+            ws.cell(current_row, total_col).font = total_font          # <--- BIGGER FONT
             ws.cell(current_row, total_col).border = border
+            ws.cell(current_row, total_col).alignment = center         # <--- FIXED CORNER ALIGNMENT
 
             subtotal_row_nums.append(current_row)
             current_group_included_rows = []
@@ -954,6 +956,7 @@ def export_power_monthly_excel(
         ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
         ws.cell(current_row, total_col).border = border
         ws.cell(current_row, total_col).alignment = center
+        ws.cell(current_row, total_col).font = total_font              # <--- BIGGER FONT
         if row_fill:
             ws.cell(current_row, total_col).fill = row_fill
 
@@ -1056,7 +1059,7 @@ def export_power_monthly_excel(
             ws.cell(current_row, total_col, f"=SUM({fc}{current_row}:{lc}{current_row})")
 
         if row_fill: ws.cell(current_row, total_col).fill = row_fill
-        ws.cell(current_row, total_col).font      = Font(bold=True, color=txt_color)
+        ws.cell(current_row, total_col).font      = Font(bold=True, size=12, color=txt_color) # <--- BIGGER FONT
         ws.cell(current_row, total_col).border    = border
         ws.cell(current_row, total_col).alignment = center
 
@@ -1068,7 +1071,7 @@ def export_power_monthly_excel(
     for i in range(len(records)):
         col_letter = openpyxl.utils.get_column_letter(i + 3)
         ws.column_dimensions[col_letter].width = 14
-    ws.column_dimensions[openpyxl.utils.get_column_letter(total_col)].width = 14
+    ws.column_dimensions[openpyxl.utils.get_column_letter(total_col)].width = 16  # <--- WIDER COLUMN (Changed 14 to 16)
 
     # Row heights for the top headers
     ws.row_dimensions[1].height = 25
