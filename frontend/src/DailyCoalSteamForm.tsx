@@ -46,12 +46,8 @@ export default function DailyCoalSteamForm({ token, onBack }: Props) {
   const steamSep = (parseFloat(form.steam_sep_closing) || 0) - (parseFloat(form.steam_sep_opening) || 0);
   const steamRefl = (parseFloat(form.steam_refl_closing) || 0) - (parseFloat(form.steam_refl_opening) || 0);
   const totalSteam = steamSep + steamRefl;
-
-  // 👇 FIX: Only use steam coal (SEP + REFL) and multiply by 1000 to convert MT to KG
-  const coalForSteamMT = (parseFloat(form.coal_consumed_sep) || 0) + (parseFloat(form.coal_consumed_refinery) || 0);
-  const csRatioNum = (coalForSteamMT > 0 && totalSteam > 0) ? (totalSteam / (coalForSteamMT * 1000)) : null;
-  const csRatio = csRatioNum !== null ? csRatioNum.toFixed(3) : '—';
-
+  const csRatio = totalCoal > 0 ? (totalSteam / totalCoal).toFixed(3) : '—';
+  const csRatioNum = totalCoal > 0 ? totalSteam / totalCoal : null;
   const csWarn = csRatioNum !== null && (csRatioNum < 5.0 || csRatioNum > 5.6);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,11 +56,11 @@ export default function DailyCoalSteamForm({ token, onBack }: Props) {
     setError('');
 
     const numFields = [
-      'opening_coal_stock', 'coal_arrival_indian', 'coal_arrival_imported',
-      'coal_consumed_sep', 'coal_consumed_refinery', 'coal_thermic',
-      'steam_sep_opening', 'steam_sep_closing', 'steam_refl_opening',
-      'steam_refl_closing', 'feed_water_temp', 'coal_bunker_pct',
-      'coal_rate_per_mt', 'coal_gcv'
+      'opening_coal_stock','coal_arrival_indian','coal_arrival_imported',
+      'coal_consumed_sep','coal_consumed_refinery','coal_thermic',
+      'steam_sep_opening','steam_sep_closing','steam_refl_opening',
+      'steam_refl_closing','feed_water_temp','coal_bunker_pct',
+      'coal_rate_per_mt','coal_gcv'
     ];
 
     const payload: any = { ...form };

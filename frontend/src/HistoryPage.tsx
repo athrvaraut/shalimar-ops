@@ -30,7 +30,7 @@ export default function HistoryPage({ token, onBack }: Props) {
       if (section === 'boiler') {
         // Fetch BOTH existing history and the new daily entries
         const res1 = await fetch(`${API}/history/boiler?year=${year}&month=${month}`, { headers });
-        const res2 = await fetch(`${API}/history/coal?year=${year}&month=${month}`, { headers }); // <--- Changed to /coal
+        const res2 = await fetch(`${API}/history/daily-entry?year=${year}&month=${month}`, { headers });
 
         // 🛑 ADD THIS AUTO-LOGOUT CHECK HERE 🛑
         if (res1.status === 401 || res2.status === 401) {
@@ -261,8 +261,7 @@ export default function HistoryPage({ token, onBack }: Props) {
           {section === 'boiler' && (
             <>
               <BoilerDetail entries={byDate[selectedDate].filter((e: any) => e.log_time)} />
-              {/* 👇 Look for report_date OR entry_date just to be safe */}
-              {byDate[selectedDate].filter((e: any) => e.report_date || e.entry_date).map((e: any, i: number) => (
+              {byDate[selectedDate].filter((e: any) => e.entry_date).map((e: any, i: number) => (
                 <div key={i} style={{ background:'#fff', borderRadius:10, padding:'14px', marginBottom:10, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
                   <div style={{ fontSize:12, fontWeight:700, color:'#0f3460', marginBottom:10 }}>📊 Daily Summary — {e.operator_name}</div>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
@@ -271,11 +270,11 @@ export default function HistoryPage({ token, onBack }: Props) {
                       ['Steam REFL', e.steam_refl_consumed, 'KG'],
                       ['Total Steam', e.total_steam, 'KG'],
                       ['C/S Ratio', e.cs_ratio, ''],
-                      ['Avg Feed Water', e.avg_feed_water || e.feed_water_temp, '°C'], // <--- Fallback added
+                      ['Avg Feed Water', e.avg_feed_water, '°C'],
                       ['Coal Arrival', e.coal_arrival_indian, 'MT'],
                       ['Coal Bunker', e.coal_bunker_pct, '%'],
-                      ['Avg FD Fan 1', e.avg_fd_fan1 || e.avg_fd1 || '—', '%'],        // <--- Fallback added
-                      ['Avg FD Fan 2', e.avg_fd_fan2 || e.avg_fd2 || '—', '%'],        // <--- Fallback added
+                      ['Avg FD Fan 1', e.avg_fd_fan1, '%'],
+                      ['Avg FD Fan 2', e.avg_fd_fan2, '%'],
                     ].map(([label, val, unit]) => (
                       <div key={label as string} style={{ background:'#f8f9fa', borderRadius:6, padding:'7px 10px' }}>
                         <div style={{ fontSize:10, color:'#888', textTransform:'uppercase' as const, marginBottom:3 }}>{label}</div>
