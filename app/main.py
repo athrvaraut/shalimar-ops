@@ -559,21 +559,21 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             month_year   = date
 
         # ── ROW 3: Title ──────────────────────────────────────────────────
-        ws.merge_cells("B3:J3")
         C(3, 2, f"DAILY STATUS REPORT- {month_year}", bold, center, bdr)
         for col in range(3, 11): ws.cell(3, col).border = bdr
+        ws.merge_cells("B3:J3")
 
         # ── ROW 4: Date ───────────────────────────────────────────────────
-        ws.merge_cells("B4:J4")
         C(4, 2, f"DATE : {date_display}", bold, center, bdr)
         for col in range(3, 11): ws.cell(4, col).border = bdr
+        ws.merge_cells("B4:J4")
 
         # Row 5: empty
 
         # ── ROW 6: Section header ─────────────────────────────────────────
-        ws.merge_cells("B6:J6")
         C(6, 2, "COAL COSUMPTION AND STOCK SHEET", bold, center, bdr)
         for col in range(3, 11): ws.cell(6, col).border = bdr
+        ws.merge_cells("B6:J6")
 
         # ── ROW 7: Coal table headers ─────────────────────────────────────
         coal_hdrs = [
@@ -622,9 +622,9 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(10, 3, None,                None, center, bdr)
         C(10, 4, "COAL IN BUNKER (%)",bold, center, bdr)
         # E10:H10 merged = REMARKS
-        ws.merge_cells("E10:H10")
         C(10, 5, "REMARKS", bold, center, bdr)
         for col in [6, 7, 8]: ws.cell(10, col).border = bdr
+        ws.merge_cells("E10:H10")
         # I10 = COAL FOR STEAM header
         C(10, 9, "COAL FOR STEAM (KG)", bold, center, bdr)
 
@@ -632,9 +632,9 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(11, 2, "COAL BUNKER STATUS", bold, left,   bdr)
         C(11, 3, None,                 None, center, bdr)
         C(11, 4, coal_bunker,          None, center, bdr)
-        ws.merge_cells("E11:H11")
         C(11, 5, None, b=bdr)
         for col in [6, 7, 8]: ws.cell(11, col).border = bdr
+        ws.merge_cells("E11:H11")
         C(11, 9, None, b=bdr)
 
         # ── ROW 12: STEAM PRESSURE PROBLEM + COAL FOR STEAM value ─────────
@@ -642,9 +642,9 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(12, 3, None, b=bdr)
         sp_val  = "NO" if steam_pressure_ok else "YES"
         C(12, 4, sp_val, bold, center, bdr)
-        ws.merge_cells("E12:H12")
         C(12, 5, None, b=bdr)
         for col in [6, 7, 8]: ws.cell(12, col).border = bdr
+        ws.merge_cells("E12:H12")
         # I12: Coal For Steam = I16(avg_feeding) * 60 * 24
         c = ws.cell(12, 9, '=IF(I16<>"",I16*60*24,"")')
         c.font = bold; c.alignment = center; c.border = bdr
@@ -652,9 +652,9 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         # Row 13: empty
 
         # ── ROW 14: STEAM FLOW SEP title ──────────────────────────────────
-        ws.merge_cells("B14:I14")
         C(14, 2, "STEAM FLOW METER READING (SEP)", bold, center, bdr)
         for col in range(3, 10): ws.cell(14, col).border = bdr
+        ws.merge_cells("B14:I14")
 
         # ── ROW 15: SEP headers ───────────────────────────────────────────
         sep_h = {2:"OPENING READING IN KG", 3:"CLOSING READING IN KG", 4:"",
