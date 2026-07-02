@@ -1514,6 +1514,7 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)):
     import json
     from decimal import Decimal
+    from datetime import datetime, timedelta
 
     # Auto-calculate coal
     sep = data.get('coal_consumed_sep') or 0
@@ -1521,16 +1522,17 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     thermic = data.get('coal_thermic') or 0
     arrival_in = data.get('coal_arrival_indian') or 0
     arrival_im = data.get('coal_arrival_imported') or 0
-    
+
     entry_date = data.get('entry_date')
-    
-    # 👇 AUTO-FETCH YESTERDAY'S CLOSING 👇
+
+    # 👇 1. SMART OPENING STOCK LOGIC 👇
     opening = 0
-    if entry_date:
-        from datetime import datetime, timedelta
+    if data.get('opening_coal_stock') not in (None, ''):
+        # Trust the frontend if Operator explicitly modifies it to fix an error
+        opening = float(data.get('opening_coal_stock'))
+    elif entry_date:
+        # Check if HOD set it manually in DB
         from sqlalchemy import text
-        
-        # 1. FIRST, check if HOD already set today's opening stock. Don't overwrite it!
         today_entry = db.execute(text(
             "SELECT opening_coal_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
         ), {"d": entry_date}).mappings().fetchone()
@@ -1538,7 +1540,7 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
         if today_entry and today_entry['opening_coal_stock'] is not None:
             opening = float(today_entry['opening_coal_stock'])
         else:
-            # 2. If not set manually, grab yesterday's closing stock to loop it
+            # Grab yesterday's closing stock
             try:
                 prev_date = (datetime.strptime(entry_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
                 prev = db.execute(text(
@@ -1550,7 +1552,6 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
                 pass
     # 👆 -------------------------------- 👆
 
-    # Now calculate totals using the (potentially updated) opening value
     total_coal = sep + refl + thermic
     closing = opening + arrival_in + arrival_im - total_coal
 
@@ -1634,7 +1635,7 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
         RETURNING id
         """),
         {
-            "entry_date": data.get('entry_date'),
+            "entry_date": entry_date,
             "operator_name": data.get('operator_name'),
             "opening_coal_stock": opening,
             "coal_arrival_indian": arrival_in,
@@ -1666,7 +1667,34 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
         }
     )
     db.commit()
-    return {"message": "Saved", "id": row.fetchone()[0],
+    inserted_id = row.fetchone()[0]
+
+    # 👇 2. CASCADING UPDATE: FIX TOMORROW AUTOMATICALLY 👇
+    try:
+        if entry_date:
+            tomorrow_date = (datetime.strptime(entry_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            tomorrow_entry = db.execute(text(
+                "SELECT * FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+            ), {"d": tomorrow_date}).mappings().fetchone()
+
+            if tomorrow_entry:
+                tom_opening = round(closing, 3)
+                tom_arr_in = float(tomorrow_entry.get('coal_arrival_indian') or 0)
+                tom_arr_im = float(tomorrow_entry.get('coal_arrival_imported') or 0)
+                tom_cons = float(tomorrow_entry.get('total_coal_consumed') or 0)
+                tom_closing = round(tom_opening + tom_arr_in + tom_arr_im - tom_cons, 3)
+
+                db.execute(text("""
+                    UPDATE daily_entries
+                    SET opening_coal_stock = :o, closing_stock = :c
+                    WHERE entry_date::text = :d
+                """), {"o": tom_opening, "c": tom_closing, "d": tomorrow_date})
+                db.commit()
+    except Exception as e:
+        pass
+    # 👆 ----------------------------------------------- 👆
+
+    return {"message": "Saved", "id": inserted_id,
             "total_coal": round(total_coal,3), "closing_stock": round(closing,3),
             "total_steam": round(total_steam,3), "cs_ratio": cs,
             "avg_feed_water": avg_fw, "avg_fd_fan1": avg_fd1, "avg_fd_fan2": avg_fd2}
@@ -1693,15 +1721,15 @@ def set_opening_stock_entry(
     current_user: models.User = Depends(auth.require_role("hod"))
 ):
     from sqlalchemy import text
+    from datetime import datetime, timedelta
     opening = float(payload.get("opening_stock", 0))
     
-    # ⚠️ CHANGED TO SELECT * so we can read the arrival and consumed values!
     existing = db.execute(text(
         "SELECT * FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
     ), {"d": date}).mappings().fetchone()
     
+    new_closing = opening
     if existing:
-        # Recalculate closing stock immediately
         arr_ind = float(existing.get('coal_arrival_indian') or 0)
         arr_imp = float(existing.get('coal_arrival_imported') or 0)
         consumed = float(existing.get('total_coal_consumed') or 0)
@@ -1718,9 +1746,35 @@ def set_opening_stock_entry(
               coal_thermic, total_coal_consumed, closing_stock, steam_sep_opening,
               steam_sep_closing, steam_sep_consumed, steam_refl_opening, steam_refl_closing,
               steam_refl_consumed, total_steam, cs_ratio)
-            VALUES (CAST(:d AS DATE), :o, 0, 0, 0, :o, 0, 0, 0, 0, 0, 0, 0, 0)
-        """), {"d": date, "o": opening})
+            VALUES (CAST(:d AS DATE), :o, 0, 0, 0, :c, 0, 0, 0, 0, 0, 0, 0, 0)
+        """), {"d": date, "o": opening, "c": new_closing})
+        
     db.commit()
+
+    # 👇 CASCADING UPDATE: FIX TOMORROW AUTOMATICALLY 👇
+    try:
+        tomorrow_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        tomorrow_entry = db.execute(text(
+            "SELECT * FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
+        ), {"d": tomorrow_date}).mappings().fetchone()
+
+        if tomorrow_entry:
+            tom_opening = round(new_closing, 3)
+            tom_arr_in = float(tomorrow_entry.get('coal_arrival_indian') or 0)
+            tom_arr_im = float(tomorrow_entry.get('coal_arrival_imported') or 0)
+            tom_cons = float(tomorrow_entry.get('total_coal_consumed') or 0)
+            tom_closing = round(tom_opening + tom_arr_in + tom_arr_im - tom_cons, 3)
+
+            db.execute(text("""
+                UPDATE daily_entries
+                SET opening_coal_stock = :o, closing_stock = :c
+                WHERE entry_date::text = :d
+            """), {"o": tom_opening, "c": tom_closing, "d": tomorrow_date})
+            db.commit()
+    except Exception as e:
+        pass
+    # 👆 ----------------------------------------------- 👆
+
     return {"message": "Opening stock set", "opening_stock": opening, "date": date}
 
 @app.get("/daily-entry/closing/{date}")
