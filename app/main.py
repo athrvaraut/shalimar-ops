@@ -481,7 +481,7 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             "SELECT * FROM daily_entries WHERE entry_date::text = :date LIMIT 1"
         ), {"date": date}).mappings().fetchone()
 
-       # 👇 Define safety function to stop NULL crashes
+       # Define safety function to stop NULL crashes
         def _sf(v):
             try: return float(v) if v not in (None, '') else 0
             except: return 0
@@ -494,13 +494,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
                     try: row[field] = json.loads(row[field])
                     except: row[field] = []
                 else:
-                    row[field] = [] # <--- CRITICAL FIX: Stops array crashes!
+                    row[field] = []
 
-            # Handle null operator_name for early morning rows
             if not row.get('operator_name'):
                 row['operator_name'] = 'N/A'
 
-            # Safely fetch steam values for NEW table
             sep_open   = _sf(row.get('steam_sep_opening'))
             sep_close  = _sf(row.get('steam_sep_closing'))
             refl_open  = _sf(row.get('steam_refl_opening'))
@@ -516,7 +514,6 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
             ), {"date": date}).mappings().fetchone()
             row = dict(coal_r) if coal_r else {}
             
-            # Safely fetch steam values for OLD table
             sep_open   = _sf(row.get('steam_sep_opening'))
             sep_close  = _sf(row.get('steam_sep_closing'))
             refl_open  = _sf(row.get('steam_refl_opening'))
@@ -541,6 +538,11 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         coal_bunker      = sf(row.get('coal_bunker_pct'))
         steam_pressure_ok = row.get('steam_pressure_ok', True)
         remarks_text     = row.get('remarks', '') if row else ''
+
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, Border, Side
+        from fastapi.responses import StreamingResponse
+        from io import BytesIO
 
         # Build workbook — NO FILLS, just borders + bold
         wb = openpyxl.Workbook()
@@ -603,27 +605,28 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         ws.row_dimensions[7].height = 42
 
         # ── ROW 8: Coal data ──────────────────────────────────────────────
-        # B8 Opening (raw)
         C(8, 2, opening_stock, b=bdr, nf='0.000')
-        # C8 Arrival Indian (raw)
         C(8, 3, arrival_ind, b=bdr, nf='0.000')
-        # D8 Arrival Imported (raw)
         C(8, 4, arrival_imp or 0, b=bdr, nf='0.000')
-        # E8 Coal SEP = E16(SEP consumed) / (I19(C/S ratio) * 1000)
-        c = ws.cell(8, 5, '=IF(AND(I19>0,E16>0),E16/(I19*1000),"")')
+        
+        # E8 Coal SEP = E16(SEP consumed) / (J19(C/S ratio) * 1000)
+        c = ws.cell(8, 5, '=IF(AND(J19>0,E16>0),E16/(J19*1000),"")')
         c.alignment = center; c.border = bdr; c.number_format = '0.000'
-        # F8 Coal REFL = I12(Coal For Steam KG)/1000 - E8
-        c = ws.cell(8, 6, '=IF(AND(I12>0,E8<>""),I12/1000-E8,"")')
+        
+        # F8 Coal REFL = J12(Coal For Steam KG)/1000 - E8
+        c = ws.cell(8, 6, '=IF(AND(J12>0,E8<>""),J12/1000-E8,"")')
         c.alignment = center; c.border = bdr; c.number_format = '0.000'
-        # G8 Thermic (raw)
+        
         C(8, 7, coal_thermic or 0, b=bdr, nf='0.000')
+        
         # H8 Total Coal = E8+F8+G8
         c = ws.cell(8, 8, '=E8+IF(F8="",0,F8)+IF(G8="",0,G8)')
         c.font = bold; c.alignment = center; c.border = bdr; c.number_format = '0.000'
+        
         # I8 Closing = B8+C8+D8-H8
         c = ws.cell(8, 9, '=B8+C8+D8-H8')
         c.alignment = center; c.border = bdr; c.number_format = '0.000'
-        # J8 Remarks
+        
         C(8, 10, remarks_text, b=bdr)
 
         # Row 9: empty
@@ -631,46 +634,51 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         # ── ROW 10: PERTICULAR section ────────────────────────────────────
         C(10, 2, "PERTICULAR",        bold, left,   bdr)
         C(10, 3, None,                None, center, bdr)
+        ws.merge_cells("B10:C10")
         C(10, 4, "COAL IN BUNKER (%)",bold, center, bdr)
-        # E10:H10 merged = REMARKS
+        
+        # E10:I10 merged = REMARKS
         C(10, 5, "REMARKS", bold, center, bdr)
-        for col in [6, 7, 8]: ws.cell(10, col).border = bdr
-        ws.merge_cells("E10:H10")
-        # I10 = COAL FOR STEAM header
-        C(10, 9, "COAL FOR STEAM (KG)", bold, center, bdr)
+        for col in [6, 7, 8, 9]: ws.cell(10, col).border = bdr
+        ws.merge_cells("E10:I10")
+        
+        # J10 = COAL FOR STEAM header
+        C(10, 10, "COAL FOR STEAM (KG)", bold, center, bdr)
 
         # ── ROW 11: COAL BUNKER STATUS ────────────────────────────────────
         C(11, 2, "COAL BUNKER STATUS", bold, left,   bdr)
         C(11, 3, None,                 None, center, bdr)
+        ws.merge_cells("B11:C11")
         C(11, 4, coal_bunker,          None, center, bdr)
         C(11, 5, None, b=bdr)
-        for col in [6, 7, 8]: ws.cell(11, col).border = bdr
-        ws.merge_cells("E11:H11")
-        C(11, 9, None, b=bdr)
+        for col in [6, 7, 8, 9]: ws.cell(11, col).border = bdr
+        ws.merge_cells("E11:I11")
+        C(11, 10, None, b=bdr)
 
         # ── ROW 12: STEAM PRESSURE PROBLEM + COAL FOR STEAM value ─────────
         C(12, 2, "STEAM PRESSURE PROBLEM", bold, left, bdr)
         C(12, 3, None, b=bdr)
+        ws.merge_cells("B12:C12")
         sp_val  = "NO" if steam_pressure_ok else "YES"
         C(12, 4, sp_val, bold, center, bdr)
         C(12, 5, None, b=bdr)
-        for col in [6, 7, 8]: ws.cell(12, col).border = bdr
-        ws.merge_cells("E12:H12")
-        # I12: Coal For Steam = I16(avg_feeding) * 60 * 24
-        c = ws.cell(12, 9, '=IF(I16<>"",I16*60*24,"")')
+        for col in [6, 7, 8, 9]: ws.cell(12, col).border = bdr
+        ws.merge_cells("E12:I12")
+        # J12: Coal For Steam = J16(avg_feeding) * 60 * 24
+        c = ws.cell(12, 10, '=IF(J16<>"",J16*60*24,"")')
         c.font = bold; c.alignment = center; c.border = bdr
 
         # Row 13: empty
 
         # ── ROW 14: STEAM FLOW SEP title ──────────────────────────────────
         C(14, 2, "STEAM FLOW METER READING (SEP)", bold, center, bdr)
-        for col in range(3, 10): ws.cell(14, col).border = bdr
-        ws.merge_cells("B14:I14")
+        for col in range(3, 11): ws.cell(14, col).border = bdr
+        ws.merge_cells("B14:J14")
 
         # ── ROW 15: SEP headers ───────────────────────────────────────────
         sep_h = {2:"OPENING READING IN KG", 3:"CLOSING READING IN KG", 4:"",
-                 5:"STEAM COSUMPTION IN KG", 6:"", 7:"FEED WATER TEMP. (°C)",
-                 8:"", 9:"AVERAGE FEEDING"}
+                 5:"STEAM COSUMPTION IN KG", 6:"", 7:"", 8:"FEED WATER TEMP. (°C)",
+                 9:"", 10:"AVERAGE FEEDING"}
         for col, h in sep_h.items():
             C(15, col, h if h else None, bold if h else None, center, bdr)
         ws.row_dimensions[15].height = 38
@@ -679,22 +687,21 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(16, 2, sf(sep_open),  b=bdr)
         C(16, 3, sf(sep_close), b=bdr)
         C(16, 4, None, b=bdr)
-        # E16: SEP consumed = safe formula with yellow background
+        # E16: SEP consumed = safe formula NO YELLOW FILL
         c = ws.cell(16, 5, '=IF(AND(B16>0,C16>0),C16-B16,0)')
         c.font = bold; c.alignment = center; c.border = bdr
-        from openpyxl.styles import PatternFill
-        c.fill = PatternFill("solid", fgColor="FFFF00")
         C(16, 6, None, b=bdr)
-        C(16, 7, avg_fw, b=bdr)       # Feed water avg
-        C(16, 8, None, b=bdr)
-        C(16, 9, avg_feeding, b=bdr)  # Average feeding HZ
+        C(16, 7, None, b=bdr)
+        C(16, 8, avg_fw, b=bdr)       # H16 Feed Water
+        C(16, 9, None, b=bdr)
+        C(16, 10, avg_feeding, b=bdr) # J16 Avg Feeding
 
         # Row 17: empty
 
-        # ── ROW 18: REFL headers (NO separate title row — matches real excel) ──
+        # ── ROW 18: REFL headers ──────────────────────────────────────────
         refl_h = {2:"OPENING READING IN KG", 3:"CLOSING READING IN KG", 4:"",
-                  5:"STEAM COSUMPTION IN KG", 6:"", 7:"TOTAL STEAM (KG)",
-                  8:"", 9:"STEAM TO COAL  RATIO"}
+                  5:"STEAM COSUMPTION IN KG", 6:"", 7:"", 8:"TOTAL STEAM (KG)",
+                  9:"", 10:"STEAM TO COAL RATIO"}
         for col, h in refl_h.items():
             C(18, col, h if h else None, bold if h else None, center, bdr)
         ws.row_dimensions[18].height = 38
@@ -703,23 +710,22 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
         C(19, 2, sf(refl_open),  b=bdr)
         C(19, 3, sf(refl_close), b=bdr)
         C(19, 4, None, b=bdr)
-        # E19: REFL consumed = safe formula with yellow background
+        # E19: REFL consumed NO YELLOW FILL
         c = ws.cell(19, 5, '=IF(AND(B19>0,C19>0),C19-B19,0)')
         c.font = bold; c.alignment = center; c.border = bdr
-        c.fill = PatternFill("solid", fgColor="FFFF00")
         C(19, 6, None, b=bdr)
-        # G19: Total Steam = formula with yellow background
-        c = ws.cell(19, 7, '=E16+E19')
+        C(19, 7, None, b=bdr)
+        # H19: Total Steam NO YELLOW FILL
+        c = ws.cell(19, 8, '=E16+E19')
         c.font = bold; c.alignment = center; c.border = bdr
-        c.fill = PatternFill("solid", fgColor="FFFF00")
-        C(19, 8, None, b=bdr)
-        # I19: C/S Ratio = G19/I12
-        c = ws.cell(19, 9, '=IF(I12>0,G19/I12,"")')
+        C(19, 9, None, b=bdr)
+        # J19: C/S Ratio = H19/J12
+        c = ws.cell(19, 10, '=IF(J12>0,H19/J12,"")')
         c.font = bold; c.alignment = center; c.border = bdr
         c.number_format = '0.00'
 
-        # Column widths — match real excel proportions
-        widths = {'A':3,'B':24,'C':18,'D':18,'E':20,'F':20,'G':20,'H':14,'I':18,'J':14}
+        # Column widths exactly matched to original
+        widths = {'A':3,'B':24,'C':18,'D':18,'E':20,'F':20,'G':20,'H':18,'I':18,'J':20}
         for col, w in widths.items():
             ws.column_dimensions[col].width = w
 
@@ -736,7 +742,7 @@ def export_daily_boiler_excel(date: str, db: Session = Depends(get_db),
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Excel generation failed: {str(e)}")
-
+        
 @app.get("/daily-report/recent")
 def get_recent_coal_reports(
     db: Session = Depends(get_db),

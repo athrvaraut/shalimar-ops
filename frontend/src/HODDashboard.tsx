@@ -57,11 +57,19 @@ export default function HODDashboard({ token, onBack }: {
   const [expandedPowerId, setExpandedPowerId] = useState<number | null>(null);
   const [loadingMsg, setLoadingMsg] = useState('Loading...');
 
+// 👇 Unify the Date: The HOD Dashboard strictly looks at YESTERDAY'S data
+  const getDashboardDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  };
+  const dashboardDate = getDashboardDate();
+  // 👆 -------------------------------------------------------------
+
   useEffect(() => {
     const fetchCoalStock = async () => {
-      const today = new Date().toISOString().split('T')[0];
       try {
-        const r1 = await fetch(`${API}/daily-entry/closing/${today}`, { headers: authHeader });
+        const r1 = await fetch(`${API}/daily-entry/closing/${dashboardDate}`, { headers: authHeader });
         if (r1.ok) {
           const d1 = await r1.json();
           if (d1.closing_stock) {
@@ -69,7 +77,7 @@ export default function HODDashboard({ token, onBack }: {
             setCoalStockInput(String(d1.closing_stock));
           }
         }
-        const r2 = await fetch(`${API}/daily-entry/${today}`, { headers: authHeader });
+        const r2 = await fetch(`${API}/daily-entry/${dashboardDate}`, { headers: authHeader });
         if (r2.ok) {
           const d2 = await r2.json();
           if (d2.opening_coal_stock) {
@@ -84,9 +92,7 @@ export default function HODDashboard({ token, onBack }: {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoadingMsg('Waking up server (first load takes ~30 sec)...');
-    }, 5000);
+    const timer = setTimeout(() => { setLoadingMsg('Waking up server...'); }, 5000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -94,24 +100,13 @@ export default function HODDashboard({ token, onBack }: {
 
   const fetchBoiler = async () => {
     setLoading(true);
-    
-    // 👇 Calculate exactly 24 hours ago 👇
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = yesterday.toISOString().split('T')[0];
-
     try {
-      // Fetch yesterday's boiler log entries
-      const res = await fetch(`${API}/boiler-log/date/${dateStr}`, { headers: authHeader });
+      const res = await fetch(`${API}/boiler-log/date/${dashboardDate}`, { headers: authHeader });
       const data = await res.json();
       setBoilerEntries(Array.isArray(data) ? data : []);
 
-      // Fetch yesterday's daily entry summary
-      const res2 = await fetch(`${API}/daily-entry/${dateStr}`, { headers: authHeader });
-      if (res2.ok) {
-        const d2 = await res2.json();
-        setDailyEntry(d2); // we'll add this state
-      }
+      const res2 = await fetch(`${API}/daily-entry/${dashboardDate}`, { headers: authHeader });
+      if (res2.ok) setDailyEntry(await res2.json());
     } catch { setBoilerEntries([]); }
     finally { setLoading(false); }
   };
@@ -119,18 +114,11 @@ export default function HODDashboard({ token, onBack }: {
   const fetchPower = async () => {
     setLoading(true);
     try {
-      // 👇 Calculate exactly 24 hours ago to match the Boiler tab 👇
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().split('T')[0];
-      
-      const res = await fetch(`${API}/power-consumption/date/${dateStr}`, { headers: authHeader });
+      const res = await fetch(`${API}/power-consumption/date/${dashboardDate}`, { headers: authHeader });
       if (res.ok) {
         const data = await res.json();
         setPowerReports(data ? [data] : []);
-      } else {
-        setPowerReports([]);
-      }
+      } else { setPowerReports([]); }
     } catch { setPowerReports([]); }
     finally { setLoading(false); }
   };
@@ -141,15 +129,12 @@ export default function HODDashboard({ token, onBack }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  const downloadBoilerDailyExcel = async (date: string) => {
-    const res = await fetch(
-      `${API}/export/daily-boiler/${date}`,
-      { headers: { 'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}` } }
-    );
+  const downloadBoilerDailyExcel = async () => {
+    const res = await fetch(`${API}/export/daily-boiler/${dashboardDate}`, { headers: authHeader });
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `Boiler_${date}.xlsx`; a.click();
+    a.href = url; a.download = `Boiler_${dashboardDate}.xlsx`; a.click();
     window.URL.revokeObjectURL(url);
   };
 
@@ -166,13 +151,11 @@ export default function HODDashboard({ token, onBack }: {
     window.URL.revokeObjectURL(url);
   };
 
-  const approveOpeningStock = async () => {
-    const today = new Date().toISOString().split('T')[0];
+ const approveOpeningStock = async () => {
     const val = parseFloat(coalStockInput);
     if (!val || isNaN(val)) { setCoalStockMsg('Enter a valid number'); return; }
     try {
-      // Try daily-entry first, fallback to daily-report
-      const res = await fetch(`${API}/daily-entry/${today}/opening`, {
+      const res = await fetch(`${API}/daily-entry/${dashboardDate}/opening`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({ opening_stock: val }),
@@ -182,9 +165,7 @@ export default function HODDashboard({ token, onBack }: {
         setCoalStockApproved(true);
         setCoalStockMsg(`✅ Opening stock set to ${val} MT`);
         setTimeout(() => setCoalStockMsg(''), 4000);
-      } else {
-        setCoalStockMsg('Failed — check server');
-      }
+      } else { setCoalStockMsg('Failed — check server'); }
     } catch { setCoalStockMsg('Failed to set opening stock'); }
   };
 
@@ -201,17 +182,10 @@ export default function HODDashboard({ token, onBack }: {
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
           {tab === 'boiler' && (
             <button
-              onClick={() => {
-                const d = new Date(); 
-                d.setDate(d.getDate() - 1); 
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                downloadBoilerDailyExcel(`${year}-${month}-${day}`);
-              }}
+              onClick={downloadBoilerDailyExcel}
               style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
-              📥 Today's Boiler Excel
+              📥 Yesterday's Boiler Excel
             </button>
           )}
           {tab === 'power' && (
