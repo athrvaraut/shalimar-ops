@@ -1516,22 +1516,18 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     from decimal import Decimal
     from datetime import datetime, timedelta
 
-    # Auto-calculate coal
-    sep = data.get('coal_consumed_sep') or 0
-    refl = data.get('coal_consumed_refinery') or 0
-    thermic = data.get('coal_thermic') or 0
-    arrival_in = data.get('coal_arrival_indian') or 0
-    arrival_im = data.get('coal_arrival_imported') or 0
+    # Safe float converter
+    def _sf(v):
+        try: return float(v) if v not in (None, '') else 0.0
+        except: return 0.0
 
     entry_date = data.get('entry_date')
 
     # 👇 1. SMART OPENING STOCK LOGIC 👇
-    opening = 0
+    opening = 0.0
     if data.get('opening_coal_stock') not in (None, ''):
-        # Trust the frontend if Operator explicitly modifies it to fix an error
         opening = float(data.get('opening_coal_stock'))
     elif entry_date:
-        # Check if HOD set it manually in DB
         from sqlalchemy import text
         today_entry = db.execute(text(
             "SELECT opening_coal_stock FROM daily_entries WHERE entry_date::text = :d LIMIT 1"
@@ -1540,7 +1536,6 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
         if today_entry and today_entry['opening_coal_stock'] is not None:
             opening = float(today_entry['opening_coal_stock'])
         else:
-            # Grab yesterday's closing stock
             try:
                 prev_date = (datetime.strptime(entry_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
                 prev = db.execute(text(
@@ -1550,31 +1545,51 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
                     opening = float(prev['closing_stock'])
             except Exception as e:
                 pass
-    # 👆 -------------------------------- 👆
+
+    # 👇 2. AUTO-CALCULATE STEAM & EXCEL MATH 👇
+    sep_open = _sf(data.get('steam_sep_opening'))
+    sep_close = _sf(data.get('steam_sep_closing'))
+    refl_open = _sf(data.get('steam_refl_opening'))
+    refl_close = _sf(data.get('steam_refl_closing'))
+    steam_sep = sep_close - sep_open
+    steam_refl = refl_close - refl_open
+    total_steam = steam_sep + steam_refl
+
+    fd1 = data.get('fd_fan1_dampers', [])
+    fd1_vals = [float(x) for x in fd1 if x not in (None, '')]
+    avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else 0
+    coal_for_steam = avg_fd1 * 60 * 24
+
+    cs = round(total_steam / coal_for_steam, 3) if coal_for_steam > 0 else 0
+
+    # Reverse-calculate Coal Consumed using Excel formulas if left blank!
+    sep = _sf(data.get('coal_consumed_sep'))
+    if not sep and steam_sep > 0 and cs > 0:
+        sep = round(steam_sep / (cs * 1000), 3)
+
+    refl = _sf(data.get('coal_consumed_refinery'))
+    if not refl and coal_for_steam > 0:
+        refl = round((coal_for_steam / 1000) - sep, 3)
+
+    thermic = _sf(data.get('coal_thermic'))
+    arrival_in = _sf(data.get('coal_arrival_indian'))
+    arrival_im = _sf(data.get('coal_arrival_imported'))
 
     total_coal = sep + refl + thermic
     closing = opening + arrival_in + arrival_im - total_coal
 
-    # Auto-calculate steam
-    sep_open = data.get('steam_sep_opening') or 0
-    sep_close = data.get('steam_sep_closing') or 0
-    refl_open = data.get('steam_refl_opening') or 0
-    refl_close = data.get('steam_refl_closing') or 0
-    steam_sep = sep_close - sep_open
-    steam_refl = refl_close - refl_open
-    total_steam = steam_sep + steam_refl
-    cs = round(total_steam / total_coal, 3) if total_coal > 0 else 0
-
-    # Auto-calculate averages from arrays
-    fw_temps = data.get('feed_water_temps', [])
-    fd1 = data.get('fd_fan1_dampers', [])
-    fd2 = data.get('fd_fan2_dampers', [])
+    # Auto-calculate averages from arrays (with safety checks for None)
+    fw_temps = data.get('feed_water_temps') or []
+    fd1 = data.get('fd_fan1_dampers') or []
+    fd2 = data.get('fd_fan2_dampers') or []
+    
     fw_vals = [float(x) for x in fw_temps if x not in (None, '')]
     fd1_vals = [float(x) for x in fd1 if x not in (None, '')]
     fd2_vals = [float(x) for x in fd2 if x not in (None, '')]
-    avg_fw = round(sum(fw_vals)/len(fw_vals), 2) if fw_vals else None
-    avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if fd1_vals else None
-    avg_fd2 = round(sum(fd2_vals)/len(fd2_vals), 2) if fd2_vals else None
+    
+    avg_fw = round(sum(fw_vals)/len(fw_vals), 2) if len(fw_vals) > 0 else None
+    avg_fd1 = round(sum(fd1_vals)/len(fd1_vals), 2) if len(fd1_vals) > 0 else None
+    avg_fd2 = round(sum(fd2_vals)/len(fd2_vals), 2) if len(fd2_vals) > 0 else None
 
     row = db.execute(
         text("""
@@ -1669,7 +1684,7 @@ def create_daily_entry(data: dict, db: Session = Depends(get_db),
     db.commit()
     inserted_id = row.fetchone()[0]
 
-    # 👇 2. CASCADING UPDATE: FIX TOMORROW AUTOMATICALLY 👇
+    # 👇 3. CASCADING UPDATE: FIX TOMORROW AUTOMATICALLY 👇
     try:
         if entry_date:
             tomorrow_date = (datetime.strptime(entry_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
