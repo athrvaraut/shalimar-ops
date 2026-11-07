@@ -2,7 +2,7 @@
 
 > **Industrial Operations Management System**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-shalimar--ops--slxa.vercel.app-blue?style=for-the-badge&logo=vercel)](https://shalimar-ops-slxa.vercel.app)
+![Frontend demo](https://img.shields.io/badge/Frontend%20demo-paused-lightgrey?style=for-the-badge&logo=vercel)
 [![Backend](https://img.shields.io/badge/API-shalimar--ops.onrender.com-green?style=for-the-badge&logo=fastapi)](https://shalimar-ops.onrender.com/docs)
 [![React](https://img.shields.io/badge/React-TypeScript-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -232,9 +232,9 @@ Horizontal format — sections as rows, each date as a column:
 
 This system was built for **Shalimar Nutrients Pvt. Ltd.**, a soya processing and refining company in Sonkhamb, Katol, Nagpur. The plant runs 3 shifts daily, 365 days/year.
 
-Before this app, operators filled handwritten log books and the HOD manually compiled monthly Excel reports — sometimes hours of work per month. Now, operators submit from their phones in minutes, and monthly reports are generated instantly.
+Before this app, operators filled handwritten log books and the HOD manually compiled monthly Excel reports — sometimes hours of work per month. With the app, operators submitted readings from their phones in minutes, and monthly reports were generated instantly.
 
-> Built as a real-world production tool, not just a demo — it's live and used daily.
+> Built as a real-world tool, not a demo: operators at the plant used it daily from April to July 2026. The frontend deployment is now paused; the API and its docs are still online.
 
 
 *Made with by [AR](https://github.com/athrvaraut)*
